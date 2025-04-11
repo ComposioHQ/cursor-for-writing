@@ -1,0 +1,223 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@import 'highlight.js/styles/github.css';
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-rgb: 255, 255, 255;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-rgb));
+}
+
+/* Editor styles */
+.prose {
+  max-width: none;
+  width: 100%;
+  color: rgb(var(--foreground-rgb));
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  color: rgb(var(--foreground-rgb));
+}
+
+.prose p {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  color: rgb(var(--foreground-rgb));
+}
+
+/* Textarea styles */
+textarea {
+  font-family: inherit;
+  color: rgb(var(--foreground-rgb));
+  line-height: 1.6;
+}
+
+textarea::placeholder {
+  color: rgba(var(--foreground-rgb), 0.5);
+}
+
+/* Click-through area styles */
+.cursor-text {
+  min-height: 100vh;
+  width: 100%;
+  padding: 1px; /* Prevents margin collapse */
+  background: rgb(var(--background-rgb));
+}
+
+/* Editor customization */
+.w-md-editor {
+  background-color: white !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.w-md-editor-text-pre,
+.w-md-editor-text-input,
+.w-md-editor-text {
+  font-size: 16px !important;
+  line-height: 1.6 !important;
+  color: rgb(var(--foreground-rgb)) !important;
+}
+
+.w-md-editor-toolbar {
+  display: none !important;
+}
+
+.wmde-markdown {
+  background-color: white !important;
+  font-size: 16px !important;
+  color: rgb(var(--foreground-rgb)) !important;
+}
+
+/* Customize markdown preview */
+.w-md-editor-preview {
+  box-shadow: none !important;
+  background-color: white !important;
+  padding: 0 1rem !important;
+  color: rgb(var(--foreground-rgb)) !important;
+}
+
+.w-md-editor-preview h1 {
+  font-size: 2em !important;
+  margin-top: 0.5em !important;
+  margin-bottom: 0.5em !important;
+  color: rgb(var(--foreground-rgb)) !important;
+}
+
+/* Hide markdown symbols in preview */
+.w-md-editor-preview p,
+.w-md-editor-preview h1,
+.w-md-editor-preview h2,
+.w-md-editor-preview h3,
+.w-md-editor-preview h4,
+.w-md-editor-preview h5,
+.w-md-editor-preview h6 {
+  margin: 0.5em 0 !important;
+  color: rgb(var(--foreground-rgb)) !important;
+}
+
+/* Tiptap Editor Styles */
+.ProseMirror {
+  width: 100%;
+  min-height: 600px;
+  height: auto !important;
+  color: rgb(var(--foreground-rgb));
+  background-color: white;
+
+  &:focus {
+    outline: none;
+  }
+}
+
+/* Make sure the editor container can grow */
+.ProseMirror-content {
+  width: 100%;
+  height: auto !important;
+  min-height: 600px;
+}
+
+/* Ensure content wrapping */
+.ProseMirror p,
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3,
+.ProseMirror h4,
+.ProseMirror h5,
+.ProseMirror h6,
+.ProseMirror ul,
+.ProseMirror ol,
+.ProseMirror blockquote {
+  width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Code block styles */
+.ProseMirror pre {
+  width: 100%;
+  overflow-x: auto;
+  background: #f6f8fa;
+  border-radius: 0.5rem;
+  color: #24292e;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.ProseMirror code {
+  background: rgba(var(--foreground-rgb), 0.1);
+  border-radius: 0.25em;
+  padding: 0.2em 0.4em;
+  color: rgb(var(--foreground-rgb));
+}
+
+/* Placeholder */
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: rgba(var(--foreground-rgb), 0.5);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Headings */
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3,
+.ProseMirror h4,
+.ProseMirror h5,
+.ProseMirror h6 {
+  font-weight: bold;
+  margin-top: 0.5em;
+  margin-bottom: 0.3em;
+  color: rgb(var(--foreground-rgb));
+}
+
+.ProseMirror h1 { font-size: 2em; }
+.ProseMirror h2 { font-size: 1.5em; }
+.ProseMirror h3 { font-size: 1.17em; }
+
+/* Lists */
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+  color: rgb(var(--foreground-rgb));
+}
+
+.ProseMirror li {
+  margin: 0.2em 0;
+  color: rgb(var(--foreground-rgb));
+}
+
+/* Blockquotes */
+.ProseMirror blockquote {
+  border-left: 3px solid rgba(var(--foreground-rgb), 0.2);
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: rgb(var(--foreground-rgb));
+}
+
+/* Button hover states */
+button:hover {
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+/* Sidebar active states */
+.sidebar-item-active {
+  background-color: rgba(var(--foreground-rgb), 0.1);
+} 

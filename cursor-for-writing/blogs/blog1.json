@@ -1,0 +1,7 @@
+{
+  "id": "blog1",
+  "title": "Getting Started with Next.js",
+  "content": "# Getting Started with Next.js\n\nNext.js is a powerful React framework that makes building web applications a breeze. Here's why you should consider using it:\n\n## Key Features\n\n1. Server-side rendering\n2. Static site generation\n3. API routes\n4. File-system based routing\n\n## Getting Started\n\nTo create a new Next.js project, simply run:\n\n```bash\nnpx create-next-app@latest\n```",
+  "status": "Published",
+  "lastModified": "2024-03-26T10:00:00.000Z"
+} 

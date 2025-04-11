@@ -1,0 +1,7 @@
+{
+  "id": "blog2",
+  "title": "Understanding TypeScript",
+  "content": "# Understanding TypeScript\n\nTypeScript adds static typing to JavaScript, making it more robust and maintainable.\n\n## Benefits\n\n- Type safety\n- Better IDE support\n- Enhanced refactoring\n- Clearer code documentation\n\n## Basic Types\n\n```typescript\nlet name: string = 'John';\nlet age: number = 30;\nlet isActive: boolean = true;\n```\n\n## Interfaces\n\n```typescript\ninterface User {\n  name: string;\n  age: number;\n}\n```",
+  "status": "Draft",
+  "lastModified": "2024-03-26T11:30:00.000Z"
+} 
