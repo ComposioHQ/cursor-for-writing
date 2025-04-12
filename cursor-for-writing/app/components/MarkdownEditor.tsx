@@ -24,11 +24,10 @@ lowlight.register('typescript', typescript);
 // Configure marked to use highlight.js for syntax highlighting
 const renderer = new marked.Renderer();
 renderer.code = ({ text, lang }) => {
-  const validLanguage = hljs.getLanguage(lang || '') ? lang : 'text';
-  const highlighted = validLanguage ? 
-    hljs.highlight(text, { language: validLanguage }).value :
-    text;
-  return `<pre><code class="language-${validLanguage}">${highlighted}</code></pre>`;
+  // Check if the language is valid and registered, default to 'plaintext' if not
+  const validLanguage = hljs.getLanguage(lang || '') ? lang || 'plaintext' : 'plaintext';
+  const highlighted = hljs.highlight(text, { language: validLanguage }).value;
+  return `<pre><code class="hljs language-${validLanguage}">${highlighted}</code></pre>`;
 };
 
 marked.setOptions({
@@ -47,30 +46,6 @@ const CustomDocument = Node.create({
   name: 'doc',
   topNode: true,
   content: 'block+',
-});
-
-const TitleInput = Node.create({
-  name: 'titleInput',
-  group: 'block',
-  atom: true,
-  parseHTML() {
-    return [{ tag: 'div[data-type="title-input"]' }];
-  },
-  renderHTML() {
-    return ['div', { 'data-type': 'title-input' }];
-  },
-});
-
-const DescriptionInput = Node.create({
-  name: 'descriptionInput',
-  group: 'block',
-  atom: true,
-  parseHTML() {
-    return [{ tag: 'div[data-type="description-input"]' }];
-  },
-  renderHTML() {
-    return ['div', { 'data-type': 'description-input' }];
-  },
 });
 
 // Add debounce utility function at the top level
@@ -205,8 +180,6 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   const editor = useEditor({
     extensions: [
       CustomDocument,
-      TitleInput,
-      DescriptionInput,
       StarterKit.configure({
         heading: {
           levels: [1, 2, 3, 4, 5, 6],
@@ -216,49 +189,76 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       }),
       CodeBlockLowlight.configure({
         lowlight,
-        defaultLanguage: 'typescript',
+        defaultLanguage: 'plaintext', // Default to plaintext if unspecified
       }),
       Underline,
       Link.configure({
         openOnClick: false,
       }),
       Placeholder.configure({
-        placeholder: ({ node, pos }) => {
-          if (node.type.name === 'heading' && node.attrs.level === 1) {
+        placeholder: ({ node, editor, pos }) => {
+          // Placeholder for the first node if it's an H1
+          if (node.type.name === 'heading' && node.attrs.level === 1 && pos === 0) {
             return 'Enter title...';
           }
-          if (node.type.name === 'paragraph' && pos === editor?.state.doc.content.firstChild?.nodeSize) {
-            return 'Enter description...';
+          // Placeholder for the second node if it's a paragraph (assuming H1 is first)
+          const firstNode = editor.state.doc.content.firstChild;
+          if (
+            node.type.name === 'paragraph' &&
+            firstNode && firstNode.type.name === 'heading' &&
+            pos === firstNode.nodeSize // Position is immediately after the first node
+          ) {
+            return 'Start writing here...';
           }
-          return '';
+          // Placeholder for the first node if it's a paragraph (no H1)
+          if (node.type.name === 'paragraph' && pos === 0) {
+            return 'Start writing here...';
+          }
+          return ''; // Return empty string or null for no placeholder
         },
         showOnlyWhenEditable: true,
-        showOnlyCurrent: false,
+        showOnlyCurrent: false, // Show placeholders even when cursor isn't directly inside
+        includeChildren: false,
       }),
       Autocomplete,
     ],
     editorProps: {
       attributes: {
-        class: 'prose prose-sm max-w-none focus:outline-none w-full px-8 py-4 text-gray-800 bg-white overflow-visible',
+        // Use a more specific class for styling to avoid conflicts
+        class: 'prose prose-sm max-w-none focus:outline-none w-full px-8 py-4 text-gray-800 bg-white overflow-visible markdown-editor-content',
       },
     },
-    content: '',
+    // Set initial content structure to allow placeholders
+    content: '<h1></h1><p></p>',
     onUpdate: ({ editor }) => {
       const htmlContent = editor.getHTML();
-      const textContent = editor.getText();
-      onChange?.(htmlContent);
-      onContentChange?.(textContent);
+      const textContent = editor.getText(); // Get plain text content
+      onChange?.(htmlContent); // Keep passing HTML if needed elsewhere
+      onContentChange?.(textContent); // Pass plain text to parent for context
 
+      // Debounced save logic
+      if (currentDoc && documentId) {
+        debouncedSave(editor.getHTML()); // Save HTML content
+      }
+    },
+  });
+
+  // Define the debounced save function
+  const debouncedSave = useCallback(
+    debounce((htmlContent: string) => {
       if (currentDoc && documentId) {
         const updatedDoc = {
           ...currentDoc,
+          // Important: Save the editor's HTML content, not markdown initially
+          // Conversion to markdown should happen on save *if* that's the storage format
           content: htmlContent,
           lastModified: new Date(),
         };
         saveBlogPost(updatedDoc).then(setCurrentDoc);
       }
-    },
-  });
+    }, 1000), // Debounce time (e.g., 1 second)
+    [currentDoc, documentId] // Dependencies for useCallback
+  );
 
   useEffect(() => {
     if (editor) {
@@ -269,40 +269,90 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   useEffect(() => {
     if (documentId) {
       loadDocument(documentId);
+    } else {
+      // If no documentId, reset editor to default placeholder state
+      if (editor && !editor.isDestroyed) {
+        editor.commands.setContent('<h1></h1><p></p>');
+        setCurrentDoc(null); // Clear current document state
+      }
     }
-  }, [documentId]);
+  }, [documentId, editor]); // Add editor to dependencies
 
   const loadDocument = async (id: string) => {
+    if (!editor || editor.isDestroyed) return; // Ensure editor is available
     try {
       const doc = await loadBlogPost(id);
-      if (doc && editor) {
+      if (doc) {
         setCurrentDoc(doc);
-        // Convert markdown to HTML with syntax highlighting
-        const htmlContent = marked(doc.content || '');
-        editor.commands.setContent(htmlContent);
+        let htmlContent = '';
+        // Check if content exists and is not just whitespace or empty structures
+        if (doc.content && doc.content.trim() && doc.content.trim() !== '<p></p>' && doc.content.trim() !== '<h1></h1><p></p>') {
+          // Assume content is stored as HTML, otherwise convert from Markdown
+          // If stored as Markdown: htmlContent = marked(doc.content);
+          htmlContent = doc.content; // Assuming stored as HTML for now
+        } else {
+          // If content is empty or just placeholder structure, set default
+          htmlContent = '<h1></h1><p></p>';
+        }
+        // Use 'replaceContent' to avoid merging histories if possible
+        editor.commands.setContent(htmlContent, false); // 'false' to not emit update initially
+        // Pass initial text content to parent
+        onContentChange?.(editor.getText());
+      } else {
+         // Document not found, reset to default
+         editor.commands.setContent('<h1></h1><p></p>');
+         setCurrentDoc(null);
+         onContentChange?.(''); // Clear content in parent
       }
     } catch (error) {
       console.error('Error loading document:', error);
+      // Optionally reset editor on error
+      editor.commands.setContent('<h1></h1><p></p>');
+      setCurrentDoc(null);
+      onContentChange?.('');
     }
   };
 
   return (
-    <div className="w-full h-full max-w-4xl mx-auto bg-white shadow-lg rounded-lg">
+    <div className="w-full h-full max-w-4xl mx-auto bg-white shadow-lg rounded-lg overflow-y-auto">
       <style>
         {`
-          .ProseMirror {
+          /* Target the specific editor class */
+          .markdown-editor-content {
             padding: 2rem !important;
-            min-height: 100% !important;
+            min-height: calc(100vh - 4rem); /* Adjust based on header height */
             height: auto !important;
+            outline: none !important; /* Ensure no focus outline */
           }
-          .ProseMirror h1.is-empty::before,
-          .ProseMirror p.is-empty:first-of-type::before {
-            color: #9CA3AF;
+
+          /* Generic placeholder style targeting the Tiptap class */
+          .markdown-editor-content .ProseMirror__placeholder {
+             color: #adb5bd;
+             font-style: italic;
+             pointer-events: none;
+             height: 0;
+             position: absolute; /* Needed for Tiptap's placeholder */
+          }
+
+          /* Specific placeholders if needed, using data-placeholder attribute */
+          .markdown-editor-content h1.is-empty:first-child::before {
             content: attr(data-placeholder);
             float: left;
-            height: 0;
+            color: #adb5bd;
             pointer-events: none;
+            height: 0;
+            font-style: italic;
           }
+          .markdown-editor-content p.is-empty::before {
+            content: attr(data-placeholder);
+            float: left;
+            color: #adb5bd;
+            pointer-events: none;
+            height: 0;
+            font-style: italic;
+          }
+
+          /* Rest of your existing styles */
           .prose {
             font-size: 0.925rem;
             line-height: 1.6;
@@ -416,6 +466,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
           }
         `}
       </style>
+      {/* Ensure EditorContent takes full height */}
       <EditorContent editor={editor} className="w-full h-full" />
     </div>
   );

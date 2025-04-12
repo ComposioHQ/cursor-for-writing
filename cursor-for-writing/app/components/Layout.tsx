@@ -166,7 +166,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
       const newDoc: BlogPost = {
         id: `blog${Date.now()}`,
         title: 'Untitled',
-        content: '# Untitled\n\nStart writing here...',
+        content: '',
         status: 'Draft',
         lastModified: new Date(),
       };
