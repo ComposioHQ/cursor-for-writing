@@ -46,7 +46,7 @@ interface MarkdownEditorProps {
 const CustomDocument = Node.create({
   name: 'doc',
   topNode: true,
-  content: 'titleInput descriptionInput block+',
+  content: 'block+',
 });
 
 const TitleInput = Node.create({

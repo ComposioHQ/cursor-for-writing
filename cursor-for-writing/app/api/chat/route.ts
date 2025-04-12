@@ -12,9 +12,8 @@ interface Selection {
 
 // Initialize the AI configuration
 const aiConfig = {
-  model: openai('gpt-4'),
+  model: openai('gpt-4o'),
   temperature: 0.7,
-  maxTokens: 2000,
 };
 
 // Initialize the toolset once
@@ -100,11 +99,12 @@ User's request: "${message}"
 Provide helpful feedback, suggestions, edits, or answers based on the user's request and the provided context. Respond directly to the user's request in a conversational but informative manner. Focus on being a helpful writing assistant.`;
 
     try {
-      const tools = await toolset.getTools({ apps: ['COMPOSIO_SEARCH'] });
+      const tools = await toolset.getTools({ apps: ['COMPOSIO_SEARCH','GOOGLEDOCS'] });
 
       const output = await generateText({
         ...aiConfig,
         tools,
+        maxSteps: 10,
         prompt,
       });
 
