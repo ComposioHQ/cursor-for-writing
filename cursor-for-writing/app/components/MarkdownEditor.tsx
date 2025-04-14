@@ -15,6 +15,8 @@ import { Node } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from 'prosemirror-state';
 import { DecorationSet, Decoration } from 'prosemirror-view';
+import TextStyle from '@tiptap/extension-text-style';
+import FontFamily from '@tiptap/extension-font-family';
 
 // Create a new lowlight instance with the common language bundle
 const lowlight = createLowlight(common);
@@ -187,6 +189,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         codeBlock: false,
         document: false,
       }),
+      TextStyle,
+      FontFamily,
       CodeBlockLowlight.configure({
         lowlight,
         defaultLanguage: 'plaintext', // Default to plaintext if unspecified

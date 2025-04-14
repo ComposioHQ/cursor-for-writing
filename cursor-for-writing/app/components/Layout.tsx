@@ -16,6 +16,7 @@ import {
   ChatBubbleLeftIcon,
   PlusCircleIcon,
   XMarkIcon,
+  VariableIcon,
 } from '@heroicons/react/24/outline';
 import { BlogPost, getAllBlogPosts, saveBlogPost } from '../utils/fileOperations';
 import { Editor } from '@tiptap/react';
@@ -77,6 +78,9 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const selectionToolbarRef = useRef<HTMLDivElement>(null);
   const [selectedTexts, setSelectedTexts] = useState<Selection[]>([]);
   const [mode, setMode] = useState<'ask' | 'agent'>('agent');
+  const [currentFont, setCurrentFont] = useState<string>('Arial');
+
+  const availableFonts = ['Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Comic Sans MS'];
 
   useEffect(() => {
     loadDocuments();
@@ -495,6 +499,18 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     },
   };
 
+  // Function to apply a random font
+  const applyRandomFont = () => {
+    if (!editor) return;
+
+    const randomIndex = Math.floor(Math.random() * availableFonts.length);
+    const newFont = availableFonts[randomIndex];
+
+    // Select all content and apply font family without explicit focus
+    editor.chain().selectAll().setFontFamily(newFont).run();
+    setCurrentFont(newFont); // Update the displayed font name
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-white">
@@ -639,7 +655,18 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                 <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`p-1 rounded ${editor.isActive('italic') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} title="Italic"><ItalicIcon className="h-5 w-5"/></button>
                 <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={`p-1 rounded ${editor.isActive('underline') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} title="Underline"><UnderlineIcon className="h-5 w-5"/></button>
                 <button onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={`p-1 rounded ${editor.isActive('codeBlock') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} title="Code Block"><CodeBracketIcon className="h-5 w-5"/></button>
-                 {/* Add more Tiptap controls here */}
+                
+                {/* Random Font Button */}
+                <button 
+                  onClick={applyRandomFont}
+                  className={`p-1 rounded hover:bg-gray-100 flex items-center space-x-1`}
+                  title="Apply Random Font"
+                >
+                  <VariableIcon className="h-5 w-5"/> 
+                  <span className="text-xs">({currentFont})</span>
+                </button>
+                
+                {/* Add more Tiptap controls here */}
                 </>
             )}
             {/* Toggle Chat Button */}
