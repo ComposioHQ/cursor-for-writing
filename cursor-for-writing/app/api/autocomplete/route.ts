@@ -3,7 +3,7 @@ import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 
 const aiConfig = {
-  model: openai('gpt-4'),
+  model: openai('gpt-4o'),
   temperature: 0.3, // Lower temperature for more focused completions
   maxTokens: 100, // Shorter responses for quick suggestions
 };
