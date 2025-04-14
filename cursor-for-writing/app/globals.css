@@ -220,4 +220,42 @@ button:hover {
 /* Sidebar active states */
 .sidebar-item-active {
   background-color: rgba(var(--foreground-rgb), 0.1);
+}
+
+/* Diff styles */
+.diff-delete {
+  text-decoration: line-through;
+  background-color: rgba(255, 0, 0, 0.1); /* Light red background */
+  color: #dc2626; /* Red text color */
+  font-family: inherit; /* Ensure font matches surrounding text */
+  font-size: inherit; /* Ensure font size matches surrounding text */
+}
+
+.diff-insert {
+  background-color: rgba(0, 255, 0, 0.1); /* Light green background */
+  color: #16a34a; /* Green text color */
+  font-weight: bold;
+  padding: 1px 2px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(0, 255, 0, 0.3);
+  cursor: pointer; /* Indicate it's interactive */
+  margin-left: 2px; /* Add a small space before insertion */
+  font-family: inherit; /* Ensure font matches surrounding text */
+  font-size: inherit; /* Ensure font size matches surrounding text */
+}
+
+/* Add a hover effect for the insert widget */
+.diff-insert:hover {
+  background-color: rgba(0, 255, 0, 0.2);
+  box-shadow: 0 0 0 1px rgba(0, 255, 0, 0.5);
+}
+
+/* Example: Override default selection color if needed */
+::selection {
+  background: rgba(0, 120, 215, 0.3); /* Example standard selection color */
+}
+
+/* Override ProseMirror selection if necessary */
+.ProseMirror-selectednode {
+  background-color: rgba(0, 120, 215, 0.1);
 } 

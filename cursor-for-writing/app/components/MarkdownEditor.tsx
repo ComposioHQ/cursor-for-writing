@@ -17,6 +17,7 @@ import { Plugin, PluginKey } from 'prosemirror-state';
 import { DecorationSet, Decoration } from 'prosemirror-view';
 import TextStyle from '@tiptap/extension-text-style';
 import FontFamily from '@tiptap/extension-font-family';
+import DiffExtension from './DiffExtension';
 
 // Create a new lowlight instance with the common language bundle
 const lowlight = createLowlight(common);
@@ -225,6 +226,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         includeChildren: false,
       }),
       Autocomplete,
+      DiffExtension,
     ],
     editorProps: {
       attributes: {

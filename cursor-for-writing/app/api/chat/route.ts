@@ -118,21 +118,45 @@ Provide helpful feedback, suggestions, edits, or answers based on the user's req
         // For agent mode, handle document modifications
         if (selections?.length) {
           try {
-            const modifications = JSON.parse(output.text);
-            return NextResponse.json({ 
-              modifiedContent: currentContent,
-              modifications: modifications.modifications,
-              hasExplanations: true,
-              type: 'modification'
-            });
+            // More flexible regex to find JSON block within ```json ... ```
+            const jsonRegex = /```json\s*([\s\S]+?)\s*```/;
+            const match = output.text.match(jsonRegex);
+            
+            let jsonStringToParse;
+            if (match && match[1]) {
+              // If regex matches, use the captured group (the JSON part)
+              jsonStringToParse = match[1].trim();
+            } else {
+              // If no match, try parsing the whole text (in case AI didn't use fences)
+              // But first, check if it *looks* like it starts with JSON object/array
+              const trimmedOutput = output.text.trim();
+              if (trimmedOutput.startsWith('{') || trimmedOutput.startsWith('[')) {
+                jsonStringToParse = trimmedOutput;
+              } else {
+                // If it doesn't look like JSON and didn't match regex, throw error
+                throw new Error('AI output does not contain a recognizable JSON block.');
+              }
+            }
+            
+            // Attempt to parse the string we determined might be JSON
+            const modificationsData = JSON.parse(jsonStringToParse); 
+            
+            // Ensure modificationsData has the expected structure
+            if (modificationsData && modificationsData.modifications && Array.isArray(modificationsData.modifications)) {
+              return NextResponse.json({ 
+                modifications: modificationsData.modifications, // Send only the modifications array
+                type: 'modification'
+              });
+            } else {
+              // Throw an error if the parsed structure is not as expected
+              throw new Error('Parsed JSON does not contain a valid "modifications" array.');
+            }
           } catch (parseError) {
-            console.error('Failed to parse modifications:', parseError);
-            // If JSON parsing fails, treat the output as a complete document replacement
+            console.error('Failed to parse modifications JSON:', parseError, 'Raw text:', output.text);
+            // Fallback: If JSON parsing fails, return error
             return NextResponse.json({ 
-              modifiedContent: output.text,
-              explanation: "Complete document replacement was performed",
-              type: 'replacement'
-            });
+              error: "AI returned modifications in an invalid format or the format could not be extracted.",
+            }, { status: 400 }); // Indicate bad data from AI
           }
         } else {
           return NextResponse.json({ 
