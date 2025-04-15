@@ -843,66 +843,67 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
         {/* Chat Output Area */}
         <div className="flex-grow overflow-y-auto p-4 space-y-4">
-          {/* Mode Description & Composio Key Status (Only in Ask mode) */}
-          {mode === 'ask' && (
+          {/* Mode Description & Composio Key Status (Now visible in both modes) */}
             <div className="text-xs text-gray-500 italic mb-4 p-3 bg-white rounded shadow-sm border border-gray-200 space-y-2">
-              <div>Ask questions and get answers without modifying the document.</div>
-              <hr className="my-2" />
-              <div>
-                <span className="font-semibold">Composio Status:</span> 
-                {composioApiKey ? (
-                  <span className="text-green-600 ml-1">API Key Set</span>
-                ) : (
-                  <span className="text-red-600 ml-1">API Key Not Set</span>
-                )}
-              </div>
-              {!showComposioInput && (
-                <button 
-                  onClick={() => setShowComposioInput(true)}
-                  className="text-indigo-600 hover:underline text-xs"
-                >
-                  {composioApiKey ? 'Update API Key' : 'Set API Key'}
-                </button>
+              {/* Mode description */}
+              {mode === 'ask' ? (
+                <div>Ask questions and get answers without modifying the document.</div>
+              ) : (
+                <div>Agent mode: Make changes to the document using AI assistance.</div>
               )}
-              {composioApiKey && !showComposioInput && (
-                <button 
-                  onClick={handleRemoveComposioKey}
-                  className="text-red-600 hover:underline text-xs ml-2"
-                >
-                  Remove Key
-                </button>
-              )}
-              {showComposioInput && (
-                <div className="mt-2 space-y-1">
-                  <input 
-                    type="password" 
-                    value={composioApiKeyInput}
-                    onChange={(e) => setComposioApiKeyInput(e.target.value)}
-                    placeholder="Enter your Composio API Key"
-                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs"
-                  />
-                  <div className="flex items-center justify-between">
-                    <button 
-                      onClick={handleSaveComposioKey}
-                      className="px-2 py-0.5 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700"
-                    >
-                      Save Key
-                    </button>
-                    <button 
-                      onClick={() => setShowComposioInput(false)}
-                      className="text-gray-500 hover:underline text-xs"
-                    >
-                      Cancel
-                    </button>
+              
+              {/* Only show Composio section if key is NOT set */}
+              {!composioApiKey && (
+                <>
+                  <hr className="my-2" />
+                  <div>
+                    <span className="font-semibold">Composio Status:</span> 
+                    {/* Status will always be "Not Set" if this section is visible */}
+                    <span className="text-red-600 ml-1">API Key Not Set</span>
                   </div>
-                </div>
+                  {!showComposioInput && (
+                    <button 
+                      onClick={() => setShowComposioInput(true)}
+                      className="text-indigo-600 hover:underline text-xs"
+                    >
+                      Set API Key
+                    </button>
+                  )}
+                  {/* Remove Key button is not needed here as key is not set */}
+                  {showComposioInput && (
+                    <div className="mt-2 space-y-1">
+                      <input 
+                        type="password" 
+                        value={composioApiKeyInput}
+                        onChange={(e) => setComposioApiKeyInput(e.target.value)}
+                        placeholder="Enter your Composio API Key"
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs"
+                      />
+                      <div className="flex items-center justify-between">
+                        <button 
+                          onClick={handleSaveComposioKey}
+                          className="px-2 py-0.5 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700"
+                        >
+                          Save Key
+                        </button>
+                        <button 
+                          onClick={() => setShowComposioInput(false)}
+                          className="text-gray-500 hover:underline text-xs"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="mt-1">
+                    Get your key from: <a href="https://app.composio.dev" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">app.composio.dev</a>
+                  </div>
+                </>
               )}
-              <div className="mt-1">
-                 Get your key from: <a href="https://app.composio.dev" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">app.composio.dev</a>
-              </div>
             </div>
-          )}
-          {mode === 'agent' && (
+          
+          {/* Conditionally show agent mode description ONLY if mode is agent */}
+           {mode === 'agent' && (
              <div className="text-xs text-gray-500 italic mb-2">
                 Make changes to the document using AI assistance
              </div>

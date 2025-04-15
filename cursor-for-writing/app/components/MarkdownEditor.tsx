@@ -1,7 +1,7 @@
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { BlogPost, loadBlogPost, saveBlogPost } from '../utils/fileOperations';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
@@ -62,8 +62,16 @@ const debounce = (fn: Function, ms: number) => {
 
 const suggestionPluginKey = new PluginKey('suggestion');
 
-const Autocomplete = Extension.create({
+const Autocomplete = Extension.create<{
+  suggestionAcceptanceCount: React.MutableRefObject<number>;
+}>({
   name: 'autocomplete',
+
+  addOptions() {
+    return {
+      suggestionAcceptanceCount: { current: 0 },
+    };
+  },
 
   addProseMirrorPlugins() {
     let suggestionTimer: NodeJS.Timeout;
@@ -92,6 +100,13 @@ const Autocomplete = Extension.create({
             if (event.key === 'Tab' && currentSuggestion) {
               event.preventDefault();
               
+              if (this.options.suggestionAcceptanceCount.current >= 5) {
+                console.log('Autocomplete suggestion limit reached.');
+                currentSuggestion = null;
+                view.dispatch(view.state.tr.setMeta('suggestion', null));
+                return false;
+              }
+
               const { state } = view;
               const { selection } = state;
               
@@ -111,6 +126,8 @@ const Autocomplete = Extension.create({
                 if (tr.docChanged) {
                   view.dispatch(tr);
                   currentSuggestion = null;
+                  this.options.suggestionAcceptanceCount.current++;
+                  console.log(`Suggestion accepted. Count: ${this.options.suggestionAcceptanceCount.current}`);
                   return true;
                 }
               } catch (error) {
@@ -135,6 +152,10 @@ const Autocomplete = Extension.create({
                 currentSuggestion = null;
                 view.dispatch(state.tr.setMeta('suggestion', null));
               }
+              return;
+            }
+
+            if (this.options.suggestionAcceptanceCount.current >= 5) {
               return;
             }
 
@@ -179,6 +200,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   onContentChange,
 }) => {
   const [currentDoc, setCurrentDoc] = useState<BlogPost | null>(null);
+  const suggestionAcceptanceCountRef = useRef<number>(0);
 
   const editor = useEditor({
     extensions: [
@@ -225,7 +247,9 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         showOnlyCurrent: false, // Show placeholders even when cursor isn't directly inside
         includeChildren: false,
       }),
-      Autocomplete,
+      Autocomplete.configure({
+        suggestionAcceptanceCount: suggestionAcceptanceCountRef,
+      }),
       DiffExtension,
     ],
     editorProps: {
@@ -275,6 +299,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   useEffect(() => {
     if (documentId) {
       loadDocument(documentId);
+      suggestionAcceptanceCountRef.current = 0;
+      console.log('Autocomplete count reset for new document.');
     } else {
       // If no documentId, reset editor to default placeholder state
       if (editor && !editor.isDestroyed) {
