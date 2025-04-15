@@ -17,6 +17,7 @@ import {
   PlusCircleIcon,
   XMarkIcon,
   VariableIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 import { BlogPost, getAllBlogPosts, saveBlogPost } from '../utils/fileOperations';
 import { Editor } from '@tiptap/react';
@@ -79,11 +80,20 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const [selectedTexts, setSelectedTexts] = useState<Selection[]>([]);
   const [mode, setMode] = useState<'ask' | 'agent'>('agent');
   const [currentFont, setCurrentFont] = useState<string>('Arial');
+  const [composioApiKey, setComposioApiKey] = useState<string | null>(null);
+  const [showComposioInput, setShowComposioInput] = useState(false);
+  const [composioApiKeyInput, setComposioApiKeyInput] = useState('');
 
   const availableFonts = ['Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Comic Sans MS'];
 
   useEffect(() => {
     loadDocuments();
+    // Load Composio API key from localStorage on mount
+    const storedKey = localStorage.getItem('composioApiKey');
+    if (storedKey) {
+      setComposioApiKey(storedKey);
+      setComposioApiKeyInput(storedKey); // Pre-fill input if key exists
+    }
   }, []);
 
   useEffect(() => {
@@ -361,7 +371,8 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
           message: userInput, 
           currentContent, // Pass editor content
           selections: selectedTextsData,
-          mode
+          mode,
+          composioApiKey: composioApiKey // Pass the stored API key
         }),
       });
 
@@ -496,6 +507,61 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     editor.chain().selectAll().setFontFamily(newFont).run();
     setCurrentFont(newFont); // Update the displayed font name
   };
+
+  // Add function to export content as MDX
+  const exportAsMdx = () => {
+    if (!selectedDoc || !editor) return;
+
+    const doc = documents.find(d => d.id === selectedDoc);
+    if (!doc) return;
+
+    const content = editorContent; // Use the editorContent prop
+    const title = doc.title || 'Untitled';
+    const lastModifiedDate = new Date(doc.lastModified); // Ensure it's a Date object
+    const lastModified = lastModifiedDate.toISOString();
+
+    // Basic MDX frontmatter
+    const mdxContent = `---
+title: '${title.replace(/'/g, "\'")}'
+lastModified: '${lastModified}'
+---
+
+${content}`;
+
+    const blob = new Blob([mdxContent], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    // Sanitize title for filename
+    const fileName = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md`;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // --- Composio API Key Management ---
+  const handleSaveComposioKey = () => {
+    if (composioApiKeyInput.trim()) {
+      setComposioApiKey(composioApiKeyInput.trim());
+      localStorage.setItem('composioApiKey', composioApiKeyInput.trim());
+      setShowComposioInput(false);
+      setAiOutput('Composio API key saved.'); // Provide feedback
+    } else {
+      // Handle empty input case if needed
+      setAiOutput('API key cannot be empty.');
+    }
+  };
+
+  const handleRemoveComposioKey = () => {
+    setComposioApiKey(null);
+    setComposioApiKeyInput('');
+    localStorage.removeItem('composioApiKey');
+    setShowComposioInput(false);
+    setAiOutput('Composio API key removed.'); // Provide feedback
+  };
+  // --- End Composio API Key Management ---
 
   if (isLoading) {
     return (
@@ -652,17 +718,26 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                   <span className="text-xs">({currentFont})</span>
                 </button>
                 
-                {/* Add more Tiptap controls here */}
+                {/* Export Button */}
+                <button 
+                  onClick={exportAsMdx}
+                  className={`p-1 rounded hover:bg-gray-100`}
+                  title="Export as MDX"
+                  disabled={!selectedDoc || !editor} // Disable if no doc or editor
+                >
+                  <ArrowDownTrayIcon className="h-5 w-5"/> 
+                </button>
+                
+                {/* Toggle Chat Button */}
+                 <button
+                  onClick={toggleChat}
+                  className={`p-2 rounded ${isChatOpen ? 'bg-indigo-100 text-indigo-600' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
+                  title="Toggle Chat"
+                >
+                  <ChatBubbleLeftIcon className="h-5 w-5" />
+                </button>
                 </>
             )}
-            {/* Toggle Chat Button */}
-             <button
-              onClick={toggleChat}
-              className={`p-2 rounded ${isChatOpen ? 'bg-indigo-100 text-indigo-600' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
-              title="Toggle Chat"
-            >
-              <ChatBubbleLeftIcon className="h-5 w-5" />
-            </button>
           </div>
         </div>
 
@@ -740,13 +815,70 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
         {/* Chat Output Area */}
         <div className="flex-grow overflow-y-auto p-4 space-y-4">
-          {/* Mode Description */}
-          <div className="text-xs text-gray-500 italic mb-2">
-            {mode === 'ask' 
-              ? "Ask questions and get answers without modifying the document"
-              : "Make changes to the document using AI assistance"
-            }
-          </div>
+          {/* Mode Description & Composio Key Status (Only in Ask mode) */}
+          {mode === 'ask' && (
+            <div className="text-xs text-gray-500 italic mb-4 p-3 bg-white rounded shadow-sm border border-gray-200 space-y-2">
+              <div>Ask questions and get answers without modifying the document.</div>
+              <hr className="my-2" />
+              <div>
+                <span className="font-semibold">Composio Status:</span> 
+                {composioApiKey ? (
+                  <span className="text-green-600 ml-1">API Key Set</span>
+                ) : (
+                  <span className="text-red-600 ml-1">API Key Not Set</span>
+                )}
+              </div>
+              {!showComposioInput && (
+                <button 
+                  onClick={() => setShowComposioInput(true)}
+                  className="text-indigo-600 hover:underline text-xs"
+                >
+                  {composioApiKey ? 'Update API Key' : 'Set API Key'}
+                </button>
+              )}
+              {composioApiKey && !showComposioInput && (
+                <button 
+                  onClick={handleRemoveComposioKey}
+                  className="text-red-600 hover:underline text-xs ml-2"
+                >
+                  Remove Key
+                </button>
+              )}
+              {showComposioInput && (
+                <div className="mt-2 space-y-1">
+                  <input 
+                    type="password" 
+                    value={composioApiKeyInput}
+                    onChange={(e) => setComposioApiKeyInput(e.target.value)}
+                    placeholder="Enter your Composio API Key"
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs"
+                  />
+                  <div className="flex items-center justify-between">
+                    <button 
+                      onClick={handleSaveComposioKey}
+                      className="px-2 py-0.5 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700"
+                    >
+                      Save Key
+                    </button>
+                    <button 
+                      onClick={() => setShowComposioInput(false)}
+                      className="text-gray-500 hover:underline text-xs"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="mt-1">
+                 Get your key from: <a href="https://app.composio.dev" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">app.composio.dev</a>
+              </div>
+            </div>
+          )}
+          {mode === 'agent' && (
+             <div className="text-xs text-gray-500 italic mb-2">
+                Make changes to the document using AI assistance
+             </div>
+          )}
           
           {/* Display AI Output */}
           {aiOutput && (

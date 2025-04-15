@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { openai } from '@ai-sdk/openai';
+import { google } from '@ai-sdk/google'
 import { generateText } from 'ai';
 
 const aiConfig = {
   model: openai('gpt-4o'),
   temperature: 0.3, // Lower temperature for more focused completions
-  maxTokens: 100, // Shorter responses for quick suggestions
+  maxTokens: 300, // Shorter responses for quick suggestions
 };
 
 export async function POST(request: Request) {

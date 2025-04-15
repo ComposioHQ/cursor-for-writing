@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { openai } from '@ai-sdk/openai';
+import { google } from '@ai-sdk/google'
 import { VercelAIToolSet } from 'composio-core';
 import { generateText } from 'ai';
 
@@ -16,12 +17,10 @@ const aiConfig = {
   temperature: 0.7,
 };
 
-// Initialize the toolset once
-const toolset = new VercelAIToolSet();
-
 export async function POST(request: Request) {
   try {
-    const { message, currentContent, selections, mode = 'agent' } = await request.json();
+    // Extract composioApiKey from the request body
+    const { message, currentContent, selections, mode = 'agent', composioApiKey } = await request.json();
 
     if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -99,6 +98,8 @@ User's request: "${message}"
 Provide helpful feedback, suggestions, edits, or answers based on the user's request and the provided context. Respond directly to the user's request in a conversational but informative manner. Focus on being a helpful writing assistant.`;
 
     try {
+      // Initialize toolset inside the request handler with the API key
+      const toolset = new VercelAIToolSet({ apiKey: composioApiKey }); // Pass apiKey here
       const tools = await toolset.getTools({ apps: ['COMPOSIO_SEARCH','GOOGLEDOCS'] });
 
       const output = await generateText({
