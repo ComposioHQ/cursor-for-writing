@@ -728,13 +728,13 @@ ${content}`;
                   <ArrowDownTrayIcon className="h-5 w-5"/> 
                 </button>
                 
-                {/* Toggle Chat Button */}
+                {/* Toggle Chat Button - Replaced with image */}
                  <button
                   onClick={toggleChat}
-                  className={`p-2 rounded ${isChatOpen ? 'bg-indigo-100 text-indigo-600' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
+                  className={`rounded ${isChatOpen ? 'bg-indigo-100' : 'hover:bg-gray-100'}`}
                   title="Toggle Chat"
                 >
-                  <ChatBubbleLeftIcon className="h-5 w-5" />
+                  <img src="/chat_icon.png" alt="Chat" className="h-6 w-12" />
                 </button>
                 </>
             )}
