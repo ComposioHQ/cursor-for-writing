@@ -359,6 +359,13 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     setIsGenerating(true);
     setAiOutput('Generating response...');
 
+    // Check if Composio API key is set before proceeding
+    if (!composioApiKey) {
+      setAiOutput('Please set your Composio API key in the chat settings before using the AI chat feature.');
+      setIsGenerating(false);
+      return; // Stop execution if key is missing
+    }
+
     try {
       // Use editorContent prop
       const currentContent = editorContent; 
