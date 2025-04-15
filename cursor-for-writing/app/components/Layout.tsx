@@ -100,12 +100,6 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
       setSelectedDoc(null);
       onDocumentSelect?.(null); // Notify parent component
     }
-    // Load Composio API key from localStorage on mount
-    const storedKey = localStorage.getItem('composioApiKey');
-    if (storedKey) {
-      setComposioApiKey(storedKey);
-      setComposioApiKeyInput(storedKey); // Pre-fill input if key exists
-    }
   }, []);
 
   useEffect(() => {
@@ -544,13 +538,14 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     URL.revokeObjectURL(url);
   };
 
-  // --- Composio API Key Management ---
+  // --- Composio API Key Management --- (No localStorage interaction)
   const handleSaveComposioKey = () => {
     if (composioApiKeyInput.trim()) {
       setComposioApiKey(composioApiKeyInput.trim());
-      localStorage.setItem('composioApiKey', composioApiKeyInput.trim());
+      // REMOVED saving to localStorage
+      // localStorage.setItem('composioApiKey', composioApiKeyInput.trim());
       setShowComposioInput(false);
-      setAiOutput('Composio API key saved.'); // Provide feedback
+      setAiOutput('Composio API key set for this session.'); // Updated feedback
     } else {
       // Handle empty input case if needed
       setAiOutput('API key cannot be empty.');
@@ -560,9 +555,10 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const handleRemoveComposioKey = () => {
     setComposioApiKey(null);
     setComposioApiKeyInput('');
-    localStorage.removeItem('composioApiKey');
+    // REMOVED removing from localStorage
+    // localStorage.removeItem('composioApiKey');
     setShowComposioInput(false);
-    setAiOutput('Composio API key removed.'); // Provide feedback
+    setAiOutput('Composio API key removed for this session.'); // Updated feedback
   };
   // --- End Composio API Key Management ---
 
@@ -843,72 +839,23 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
         {/* Chat Output Area */}
         <div className="flex-grow overflow-y-auto p-4 space-y-4">
-          {/* Mode Description & Composio Key Status (Now visible in both modes) */}
-            <div className="text-xs text-gray-500 italic mb-4 p-3 bg-white rounded shadow-sm border border-gray-200 space-y-2">
-              {/* Mode description */}
-              {mode === 'ask' ? (
-                <div>Ask questions and get answers without modifying the document.</div>
-              ) : (
-                <div>Agent mode: Make changes to the document using AI assistance.</div>
-              )}
-              
-              {/* Only show Composio section if key is NOT set */}
-              {!composioApiKey && (
-                <>
-                  <hr className="my-2" />
-                  <div>
-                    <span className="font-semibold">Composio Status:</span> 
-                    {/* Status will always be "Not Set" if this section is visible */}
-                    <span className="text-red-600 ml-1">API Key Not Set</span>
-                  </div>
-                  {!showComposioInput && (
-                    <button 
-                      onClick={() => setShowComposioInput(true)}
-                      className="text-indigo-600 hover:underline text-xs"
-                    >
-                      Set API Key
-                    </button>
-                  )}
-                  {/* Remove Key button is not needed here as key is not set */}
-                  {showComposioInput && (
-                    <div className="mt-2 space-y-1">
-                      <input 
-                        type="password" 
-                        value={composioApiKeyInput}
-                        onChange={(e) => setComposioApiKeyInput(e.target.value)}
-                        placeholder="Enter your Composio API Key"
-                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs"
-                      />
-                      <div className="flex items-center justify-between">
-                        <button 
-                          onClick={handleSaveComposioKey}
-                          className="px-2 py-0.5 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700"
-                        >
-                          Save Key
-                        </button>
-                        <button 
-                          onClick={() => setShowComposioInput(false)}
-                          className="text-gray-500 hover:underline text-xs"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  <div className="mt-1">
-                    Get your key from: <a href="https://app.composio.dev" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">app.composio.dev</a>
-                  </div>
-                </>
-              )}
-            </div>
-          
-          {/* Conditionally show agent mode description ONLY if mode is agent */}
-           {mode === 'agent' && (
-             <div className="text-xs text-gray-500 italic mb-2">
-                Make changes to the document using AI assistance
-             </div>
-          )}
-          
+          {/* Mode Description & Composio Key Status (Visible in both modes) */}
+          <div className="text-xs text-gray-500 italic mb-4 p-3 bg-white rounded shadow-sm border border-gray-200 space-y-2">
+            {/* Mode description */}
+            {mode === 'ask' ? (
+              <div>Ask questions and get answers without modifying the document.</div>
+            ) : (
+              <div>Agent mode: Make changes to the document using AI assistance.</div>
+            )}
+
+            {/* Only show Composio section if key is NOT set */}
+            {!composioApiKey && (
+              <>
+                {/* ... composio UI elements ... */}
+              </>
+            )}
+          </div>
+
           {/* Display AI Output */}
           {aiOutput && (
             <div className="p-3 bg-white rounded shadow-sm text-sm">

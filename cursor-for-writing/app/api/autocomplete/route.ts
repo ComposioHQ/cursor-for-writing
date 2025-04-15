@@ -4,9 +4,9 @@ import { google } from '@ai-sdk/google'
 import { generateText } from 'ai';
 
 const aiConfig = {
-  model: openai('gpt-4o'),
+  model: openai('gpt-4o-mini'),
   temperature: 0.3, // Lower temperature for more focused completions
-  maxTokens: 300, // Shorter responses for quick suggestions
+  maxTokens: 700, // Shorter responses for quick suggestions
 };
 
 export async function POST(request: Request) {
