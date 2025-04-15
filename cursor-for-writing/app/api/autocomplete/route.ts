@@ -31,8 +31,11 @@ Return ONLY the completion text, no explanations or formatting, and **do not** w
         prompt,
       });
 
+      // Trim whitespace and remove leading/trailing double quotes
+      const cleanedCompletion = completion.text.trim().replace(/^\"|\"$/g, '');
+
       return NextResponse.json({ 
-        completion: completion.text.trim(),
+        completion: cleanedCompletion,
       });
     } catch (aiError) {
       console.error('AI Generation Error:', aiError);

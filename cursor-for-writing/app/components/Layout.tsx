@@ -19,7 +19,7 @@ import {
   VariableIcon,
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
-import { BlogPost, getAllBlogPosts, saveBlogPost } from '../utils/fileOperations';
+import { BlogPost, getAllBlogPosts, saveBlogPost, deleteBlogPost } from '../utils/fileOperations';
 import { Editor } from '@tiptap/react';
 import { openai } from '@ai-sdk/openai';
 import { VercelAIToolSet } from 'composio-core';
@@ -29,6 +29,9 @@ import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
 import ReactMarkdown from 'react-markdown';
 import { Components } from 'react-markdown';
+
+// Add this line to read the environment variable
+const isLocalEnv = process.env.NEXT_PUBLIC_LOCAL_ENV === 'True';
 
 // Configure marked to use highlight.js for syntax highlighting
 const renderer = new marked.Renderer();
@@ -87,7 +90,16 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const availableFonts = ['Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Comic Sans MS'];
 
   useEffect(() => {
-    loadDocuments();
+    // Conditionally load documents only if in local env
+    if (isLocalEnv) {
+      loadDocuments();
+    } else {
+      // If not local env, set loading to false and clear documents
+      setIsLoading(false);
+      setDocuments([]);
+      setSelectedDoc(null);
+      onDocumentSelect?.(null); // Notify parent component
+    }
     // Load Composio API key from localStorage on mount
     const storedKey = localStorage.getItem('composioApiKey');
     if (storedKey) {
@@ -175,6 +187,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   };
 
   const createNewDocument = async () => {
+    // This function should only be callable if isLocalEnv is true, ensured by conditional button rendering
     try {
       setError(null);
       const newDoc: BlogPost = {
@@ -196,6 +209,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   };
 
   const startEditingTitle = (doc: BlogPost, event: React.MouseEvent) => {
+    // This function should only be callable if isLocalEnv is true, ensured by conditional button rendering
     event.stopPropagation();
     setEditingTitleId(doc.id);
     setEditingTitle(doc.title);
@@ -210,6 +224,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   };
 
   const saveTitle = async (doc: BlogPost) => {
+    // This function relies on editingTitleId being set, which happens via startEditingTitle
     if (editingTitle.trim() === '') return;
     
     try {
@@ -227,6 +242,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   };
 
   const deleteDocument = async (event: React.MouseEvent) => {
+    // This function should only be callable if isLocalEnv is true, ensured by conditional button rendering
     event.preventDefault();
     if (!selectedDoc) return;
 
@@ -249,11 +265,12 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
         onDocumentSelect?.(null);
       }
 
-      // TODO: Add actual deletion from storage
+      // Call the actual deletion function from fileOperations
+      await deleteBlogPost(selectedDoc);
     } catch (error) {
       console.error('Failed to delete document:', error);
-      // Reload documents to ensure consistency
-      loadDocuments();
+      // Reload documents to ensure consistency if deletion fails
+      await loadDocuments(); // Ensure reload happens even on error
     }
   };
 
@@ -510,34 +527,20 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
   // Add function to export content as MDX
   const exportAsMdx = () => {
-    if (!selectedDoc || !editor) return;
-
+    if (!selectedDoc) return;
     const doc = documents.find(d => d.id === selectedDoc);
     if (!doc) return;
 
-    const content = editorContent; // Use the editorContent prop
-    const title = doc.title || 'Untitled';
-    const lastModifiedDate = new Date(doc.lastModified); // Ensure it's a Date object
-    const lastModified = lastModifiedDate.toISOString();
+    const markdownContent = editorContent; // Use the editor content directly
 
-    // Basic MDX frontmatter
-    const mdxContent = `---
-title: '${title.replace(/'/g, "\'")}'
-lastModified: '${lastModified}'
----
-
-${content}`;
-
-    const blob = new Blob([mdxContent], { type: 'text/markdown' });
+    const blob = new Blob([markdownContent], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    // Sanitize title for filename
-    const fileName = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md`;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'cursor_for_writing.md'; // Keep changed filename
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
@@ -581,173 +584,198 @@ ${content}`;
 
   return (
     <div className="flex h-screen bg-white text-gray-900">
-      {/* Left Sidebar */}
-      <div
-        className={`bg-white shadow-md transition-all duration-300 ease-in-out flex flex-col ${
-          isSidebarOpen ? 'w-64' : 'w-0 overflow-hidden'
-        }`}
-      >
-        {/* Sidebar Header */}
-        <div className="p-4 flex justify-between items-center border-b border-gray-200 h-16 flex-shrink-0">
-          <span className="font-semibold text-lg">Documents</span>
-          <button
-            onClick={createNewDocument}
-            className="p-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded"
-            title="New Document"
-          >
-            <PlusIcon className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Document List */}
-        <div className="flex-grow overflow-y-auto p-2 space-y-1">
-          {isLoading && <div className="p-2 text-gray-500">Loading...</div>}
-          {error && <div className="p-2 text-red-500">{error}</div>}
-          {!isLoading && !error && documents.length === 0 && (
-            <div className="p-2 text-gray-500">No documents yet.</div>
-          )}
-          {!isLoading &&
-            !error &&
-            documents.map((doc) => (
-              <div
-                key={doc.id}
-                onClick={() => handleDocumentSelect(doc.id)}
-                className={`p-2 rounded cursor-pointer group flex justify-between items-center ${
-                  selectedDoc === doc.id
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : 'hover:bg-gray-100'
-                }`}
+      {/* Sidebar - Conditionally render with ORIGINAL styling */}
+      {isLocalEnv && (
+        <div
+          // Restore original sidebar styling + conditional width
+          className={`bg-white shadow-md transition-all duration-300 ease-in-out flex flex-col ${
+            isSidebarOpen ? 'w-64' : 'w-0 overflow-hidden' // Use original collapsed state
+          }`}
+        >
+          {/* Sidebar Header - Restore original styling */}
+          <div className="p-4 flex justify-between items-center border-b border-gray-200 h-16 flex-shrink-0">
+            <span className="font-semibold text-lg">Documents</span>
+            {/* Keep conditional rendering for the button */}
+            {isLocalEnv && (
+              <button
+                onClick={createNewDocument}
+                // Restore original button styling
+                className="p-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded"
+                title="New Document"
               >
-                {editingTitleId === doc.id ? (
-                   <input
-                    type="text"
-                    value={editingTitle}
-                    onChange={(e) => setEditingTitle(e.target.value)}
-                    onKeyDown={(e) => handleTitleKeyDown(e, doc)}
-                    onBlur={() => saveTitle(doc)}
-                    className="flex-grow bg-transparent border border-indigo-300 rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    autoFocus
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <span 
-                    className="flex-grow truncate text-sm pr-2"
-                    onDoubleClick={(e) => startEditingTitle(doc, e)}
-                    title={doc.title}
-                  >
-                    {doc.title}
-                  </span>
-                )}
-                <span className="text-xs text-gray-400 group-hover:text-gray-500">
-                  {new Date(doc.lastModified).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-                 <button 
-                    onClick={(e) => startEditingTitle(doc, e)}
-                    className="ml-2 p-0.5 text-gray-400 hover:text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Edit Title"
-                  >
-                    <PencilIcon className="h-3 w-3"/>
-                 </button>
-              </div>
-            ))}
-        </div>
-
-         {/* Sidebar Footer Actions */}
-        {selectedDoc && (
-          <div className="p-2 border-t border-gray-200 flex-shrink-0 space-y-1">
-            <button onClick={duplicateDocument} className="w-full flex items-center text-left p-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">
-              <DocumentDuplicateIcon className="h-4 w-4 mr-2" /> Duplicate
-            </button>
-            <button onClick={publishDocument} className="w-full flex items-center text-left p-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">
-              <LinkIcon className="h-4 w-4 mr-2" /> {documents.find(d => d.id === selectedDoc)?.status === 'Published' ? 'Unpublish' : 'Publish'}
-            </button>
-            <button onClick={toggleHistory} className="w-full flex items-center text-left p-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">
-              <ClockIcon className="h-4 w-4 mr-2" /> History
-            </button>
-            <button onClick={deleteDocument} className="w-full flex items-center text-left p-1.5 text-sm text-red-600 hover:bg-red-50 rounded">
-              <TrashIcon className="h-4 w-4 mr-2" /> Delete
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-grow flex flex-col overflow-hidden bg-white">
-         {/* Header Bar */}
-        <div className="bg-white shadow-sm h-16 flex items-center justify-between px-4 flex-shrink-0 border-b border-gray-200">
-           {/* Left side: Toggle Sidebar Button */}
-           <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded"
-          >
-            {isSidebarOpen ? <ChevronLeftIcon className="h-5 w-5" /> : <Bars3Icon className="h-5 w-5" />}
-          </button>
-
-          {/* Center: Document Title/Info (Optional) */}
-          <div className="flex-grow text-center">
-            {/* {selectedDoc && documents.find(d => d.id === selectedDoc)?.title} */}
-          </div>
-
-          {/* Right side: Toolbar / Actions */}
-          <div className="flex items-center space-x-2">
-             {/* Mode Toggle - Now shows current mode but is not clickable */}
-            <div className="flex items-center space-x-2 mr-4">
-              <div className={`px-3 py-1 rounded ${
-                mode === 'ask' 
-                  ? 'bg-indigo-100 text-indigo-600' 
-                  : 'text-gray-500'
-              }`}>
-                {mode === 'ask' ? 'Ask Mode' : 'Agent Mode'}
-              </div>
-            </div>
-             {/* Formatting Buttons (Example) */}
-            {editor && (
-                <>
-                <button onClick={() => editor.chain().focus().toggleBold().run()} className={`p-1 rounded ${editor.isActive('bold') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} title="Bold"><BoldIcon className="h-5 w-5"/></button>
-                <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`p-1 rounded ${editor.isActive('italic') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} title="Italic"><ItalicIcon className="h-5 w-5"/></button>
-                <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={`p-1 rounded ${editor.isActive('underline') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} title="Underline"><UnderlineIcon className="h-5 w-5"/></button>
-                <button onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={`p-1 rounded ${editor.isActive('codeBlock') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} title="Code Block"><CodeBracketIcon className="h-5 w-5"/></button>
-                
-                {/* Random Font Button */}
-                <button 
-                  onClick={applyRandomFont}
-                  className={`p-1 rounded hover:bg-gray-100 flex items-center space-x-1`}
-                  title="Apply Random Font"
-                >
-                  <VariableIcon className="h-5 w-5"/> 
-                  <span className="text-xs">({currentFont})</span>
-                </button>
-                
-                {/* Export Button */}
-                <button 
-                  onClick={exportAsMdx}
-                  className={`p-1 rounded hover:bg-gray-100`}
-                  title="Export as MDX"
-                  disabled={!selectedDoc || !editor} // Disable if no doc or editor
-                >
-                  <ArrowDownTrayIcon className="h-5 w-5"/> 
-                </button>
-                
-                {/* Toggle Chat Button - Replaced with image */}
-                 <button
-                  onClick={toggleChat}
-                  className={`rounded ${isChatOpen ? 'bg-indigo-100' : 'hover:bg-gray-100'}`}
-                  title="Toggle Chat"
-                >
-                  <img src="/chat_icon.png" alt="Chat" className="h-6 w-12" />
-                </button>
-                </>
+                {/* Restore original icon size */}
+                <PlusIcon className="h-5 w-5" /> 
+              </button>
             )}
           </div>
-        </div>
 
-         {/* Editor Area */}
+          {/* Document List - Restore original styling */} 
+          <div className="flex-grow overflow-y-auto p-2 space-y-1">
+            {isLoading && <div className="p-2 text-gray-500">Loading...</div>}
+            {error && <div className="p-2 text-red-500">{error}</div>}
+            {!isLoading && !error && documents.length === 0 && (
+              <div className="p-2 text-gray-500">No documents yet.</div>
+            )}
+            {!isLoading &&
+              !error &&
+              documents.map((doc) => (
+                <div
+                  key={doc.id}
+                  onClick={() => handleDocumentSelect(doc.id)}
+                   // Restore original item styling
+                  className={`p-2 rounded cursor-pointer group flex justify-between items-center ${
+                    selectedDoc === doc.id
+                      ? 'bg-indigo-100 text-indigo-700'
+                      : 'hover:bg-gray-100'
+                  }`}
+                >
+                  {editingTitleId === doc.id ? (
+                     <input
+                      type="text"
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      onKeyDown={(e) => handleTitleKeyDown(e, doc)}
+                      onBlur={() => saveTitle(doc)}
+                      // Restore original input styling
+                      className="flex-grow bg-transparent border border-indigo-300 rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span 
+                      // Restore original title styling
+                      className="flex-grow truncate text-sm pr-2"
+                      onDoubleClick={(e) => isLocalEnv && startEditingTitle(doc, e)} // Conditionally allow double click edit
+                      title={doc.title}
+                    >
+                      {doc.title}
+                    </span>
+                  )}
+                  {/* Restore original time display */}
+                  <span className="text-xs text-gray-400 group-hover:text-gray-500">
+                    {new Date(doc.lastModified).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                   {/* Conditionally render original edit button */}
+                   {isLocalEnv && (
+                     <button 
+                       onClick={(e) => startEditingTitle(doc, e)}
+                       // Restore original edit button styling
+                       className="ml-2 p-0.5 text-gray-400 hover:text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                       title="Edit Title"
+                       disabled={editingTitleId === doc.id} // Keep disabled logic
+                     >
+                       {/* Restore original icon size */}
+                       <PencilIcon className="h-3 w-3"/>
+                    </button>
+                   )}
+                </div>
+              ))}
+          </div>
+
+          {/* Sidebar Footer Actions - Conditionally render buttons inside */} 
+          {selectedDoc && (
+            <div className="p-2 border-t border-gray-200 flex-shrink-0 space-y-1">
+              {/* Conditionally render Duplicate button with original style */} 
+              {isLocalEnv && (
+                <button onClick={duplicateDocument} className="w-full flex items-center text-left p-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">
+                  <DocumentDuplicateIcon className="h-4 w-4 mr-2" /> Duplicate
+                </button>
+              )}
+              {/* Keep Publish button as is (or make conditional if required) */}
+              <button onClick={publishDocument} className="w-full flex items-center text-left p-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">
+                <LinkIcon className="h-4 w-4 mr-2" /> {documents.find(d => d.id === selectedDoc)?.status === 'Published' ? 'Unpublish' : 'Publish'}
+              </button>
+              {/* Keep History button */}
+              <button onClick={toggleHistory} className="w-full flex items-center text-left p-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">
+                <ClockIcon className="h-4 w-4 mr-2" /> History
+              </button>
+              {/* Conditionally render Delete button with original style */}
+              {isLocalEnv && (
+                <button onClick={deleteDocument} className="w-full flex items-center text-left p-1.5 text-sm text-red-600 hover:bg-red-50 rounded">
+                  <TrashIcon className="h-4 w-4 mr-2" /> Delete
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )} {/* End of conditional sidebar */} 
+
+
+      {/* Main Content Area - Restore original styling */} 
+      <div className="flex-grow flex flex-col overflow-hidden bg-white">
+          {/* Header Bar - Restore original styling */} 
+         <div className="bg-white shadow-sm h-16 flex items-center justify-between px-4 flex-shrink-0 border-b border-gray-200">
+            {/* Left side: Toggle Sidebar Button - Conditionally render */}
+            {isLocalEnv && (
+                <button
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                // Restore original toggle button styling
+                className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded"
+              >
+                {/* Restore original icon size */}
+                {isSidebarOpen ? <ChevronLeftIcon className="h-5 w-5" /> : <Bars3Icon className="h-5 w-5" />}
+              </button>
+            )}
+            
+            {/* Center: Document Title/Info (Conditional display) */}
+            <div className="flex-grow text-center">
+              {/* REMOVED Title display logic from here */}
+            </div>
+
+            {/* Right side: Toolbar / Actions - Restore original styling */} 
+            <div className="flex items-center space-x-2">
+              {/* Mode Toggle - Always Visible */} 
+             <div className="flex items-center space-x-2 mr-4">
+               {/* ... Mode toggle JSX ... (Assuming it's always visible) */} 
+             </div>
+              {/* Formatting Buttons - Always Visible if editor exists */} 
+             {editor && (
+                 <>
+                  <button onClick={() => editor.chain().focus().toggleBold().run()} className={`p-1 rounded ${editor.isActive('bold') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} title="Bold"><BoldIcon className="h-5 w-5"/></button>
+                  <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`p-1 rounded ${editor.isActive('italic') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} title="Italic"><ItalicIcon className="h-5 w-5"/></button>
+                  <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={`p-1 rounded ${editor.isActive('underline') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} title="Underline"><UnderlineIcon className="h-5 w-5"/></button>
+                  <button onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={`p-1 rounded ${editor.isActive('codeBlock') ? 'bg-gray-200' : 'hover:bg-gray-100'}`} title="Code Block"><CodeBracketIcon className="h-5 w-5"/></button>
+                 </>
+             )}
+              {/* Random Font Button - Always Visible */}
+              <button 
+                onClick={applyRandomFont}
+                className={`p-1 rounded hover:bg-gray-100 flex items-center space-x-1`}
+                title="Apply Random Font"
+              >
+                <VariableIcon className="h-5 w-5"/> 
+                <span className="text-xs">({currentFont})</span>
+              </button>
+             
+              {/* Export Button - Always Visible */} 
+              <button 
+                onClick={exportAsMdx}
+                className={`p-1 rounded hover:bg-gray-100 text-blue-600`}
+                title="Export as Markdown"
+                disabled={!selectedDoc && isLocalEnv} // Disable only if local env and no doc selected
+              >
+                <ArrowDownTrayIcon className="h-5 w-5"/> 
+              </button>
+
+              {/* Chat Toggle Button - Always Visible */} 
+              <button
+                onClick={toggleChat}
+                className={`p-1 rounded ${isChatOpen ? 'bg-indigo-100' : 'hover:bg-gray-100'}`}
+                title="Toggle Chat"
+              >
+                {/* Replace Icon with Image */}
+                <img src="/chat_icon.png" alt="Chat" className="h-6 w-12" />
+              </button>
+            </div>
+         </div>
+
+         {/* Editor Area - Always Visible */} 
          <div className="flex-grow overflow-y-auto">
            {children}
          </div>
       </div>
 
-      {/* Floating Selection Toolbar */}
+      {/* Keep Floating Selection Toolbar - Always Visible (conditionally shown based on selection) */} 
       {showSelectionToolbar && (
         <div
           ref={selectionToolbarRef}
@@ -770,7 +798,7 @@ ${content}`;
         </div>
       )}
 
-      {/* Right Chat Sidebar */}
+      {/* Keep Right Chat Sidebar - Always Visible (conditionally shown based on isChatOpen) */}
       <div
         className={`bg-gray-50 border-l border-gray-200 transition-all duration-300 ease-in-out flex flex-col ${
           isChatOpen ? 'w-80' : 'w-0 overflow-hidden'
