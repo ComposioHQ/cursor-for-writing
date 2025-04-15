@@ -23,7 +23,7 @@ Current text up to cursor: "${text}"
 Context: ${context || 'None provided'}
 
 Provide a natural completion that would fit well here. Keep it concise and relevant.
-Return ONLY the completion text, no explanations or formatting.`;
+Return ONLY the completion text, no explanations or formatting, and **do not** wrap it in quotation marks.`;
 
     try {
       const completion = await generateText({
