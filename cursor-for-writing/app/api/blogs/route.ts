@@ -13,13 +13,25 @@ const writeFileAsync = promisify(fs.writeFile);
 const readFileAsync = promisify(fs.readFile);
 const readdirAsync = promisify(fs.readdir);
 
-// Ensure blogs directory exists
-if (!fs.existsSync(BLOG_DIR)) {
+// Read the environment variable at the module level
+const isLocalEnv = process.env.NEXT_PUBLIC_LOCAL_ENV === 'True';
+
+// Ensure blogs directory exists only if in local env
+if (isLocalEnv && !fs.existsSync(BLOG_DIR)) {
   fs.mkdirSync(BLOG_DIR, { recursive: true });
 }
 
 export async function GET() {
+  // Only allow GET if in local env
+  if (!isLocalEnv) {
+    console.log('GET /api/blogs blocked: Not in local environment.');
+    return NextResponse.json([]); // Return empty array if not local
+  }
   try {
+    // Check if directory exists before reading (it might not if isLocalEnv was false initially)
+    if (!fs.existsSync(BLOG_DIR)) {
+        return NextResponse.json([]);
+    }
     const files = await readdirAsync(BLOG_DIR);
     const posts = [];
 
@@ -45,11 +57,27 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const post = await request.json();
-    const filePath = path.join(BLOG_DIR, `${post.id}.json`);
-    await writeFileAsync(filePath, JSON.stringify(post, null, 2));
+    
+    // Only attempt to write if in local environment
+    if (isLocalEnv) {
+      // Ensure the directory exists before writing (needed if created conditionally)
+       if (!fs.existsSync(BLOG_DIR)) {
+         fs.mkdirSync(BLOG_DIR, { recursive: true });
+       }
+      const filePath = path.join(BLOG_DIR, `${post.id}.json`);
+      await writeFileAsync(filePath, JSON.stringify(post, null, 2));
+      console.log(`Blog post saved locally: ${post.id}.json`);
+    } else {
+      console.log(`Skipping file write for blog post ${post.id}: Not in local environment.`);
+      // Optionally add a slight delay to simulate network/write time if needed
+      // await new Promise(resolve => setTimeout(resolve, 50)); 
+    }
+    
+    // Always return the post data as if successful
     return NextResponse.json(post);
   } catch (error) {
     console.error('Error saving blog:', error);
+    // Still return error if something else goes wrong (like request parsing)
     return NextResponse.json({ error: 'Failed to save blog' }, { status: 500 });
   }
 } 
