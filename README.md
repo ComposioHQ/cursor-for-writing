@@ -42,7 +42,7 @@ This is a Next.js application providing backend API endpoints for various AI-pow
 
     # Required for Composio tool integration in /api/chat
     COMPOSIO_API_KEY=your_composio_api_key 
-
+    NEXT_PUBLIC_LOCAL_ENV=False #Change to True for full functionality
     # Add any other keys used by Composio tools or other services
     # Example: GROQ_API_KEY, MISTRAL_API_KEY, SOLANA keys... 
     # (Only include if actively used by your Composio-integrated tools)
