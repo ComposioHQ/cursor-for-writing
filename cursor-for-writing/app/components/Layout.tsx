@@ -875,9 +875,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                       Save
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Get your API key at <a href="https://app.composio.dev" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">app.composio.dev</a>
-                  </p>
+                  <p className="text-xs text-gray-400 mt-1">Get your API key at <a href="https://app.composio.dev/developers" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">app.composio.dev/developers</a></p>
                 </div>
               </>
             )}
