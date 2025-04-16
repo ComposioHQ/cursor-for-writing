@@ -48,7 +48,8 @@ export async function POST(request: Request) {
 
     // Determine which tools to load based on mentions
     const mentionedToolIds = extractToolMentions(message);
-    const appsToLoad = mentionedToolIds.length > 0 ? mentionedToolIds : Object.values(availableToolsMap); // Default to all if none mentioned
+    // Only load tools that are specifically mentioned, otherwise use empty array
+    const appsToLoad = mentionedToolIds.length > 0 ? mentionedToolIds : [];
 
     // Remove mentions from the message passed to the AI if needed, or keep them for context
     // const cleanMessage = message.replace(/@([a-zA-Z0-9_]+)/g, '').trim();
@@ -56,10 +57,8 @@ export async function POST(request: Request) {
 
     // Construct prompt, potentially indicating available tools
     let toolInfoForPrompt = "";
-    if (appsToLoad.length > 0 && appsToLoad.length < Object.keys(availableToolsMap).length) {
-        toolInfoForPrompt = `You have the following tools available for this request: ${appsToLoad.join(', ')}. Use them if appropriate.\n\n`;
-    } else if (appsToLoad.length === Object.keys(availableToolsMap).length) {
-        // toolInfoForPrompt = `All standard tools are available (${appsToLoad.join(', ')}).\n\n`; // Optional
+    if (mentionedToolIds.length > 0) {
+        toolInfoForPrompt = `You have the following tools available for this request: ${mentionedToolIds.join(', ')}. Use them if appropriate.\n\n`;
     }
 
     // Different prompts for different modes
@@ -136,15 +135,27 @@ Provide helpful feedback, suggestions, edits, or answers based on the user's req
     try {
       // Initialize toolset inside the request handler with the API key
       const toolset = new VercelAIToolSet({ apiKey: composioApiKey }); // Pass apiKey here
-      // Dynamically load tools based on mentions or defaults
-      const tools = await toolset.getTools({ apps: appsToLoad });
-
-      const output = await generateText({
-        ...aiConfig,
-        tools,
-        maxSteps: 10,
-        prompt,
-      });
+      
+      // Only load tools if any were mentioned
+      let output;
+      
+      if (mentionedToolIds.length > 0) {
+        // Load tools and include them in the API call
+        const tools = await toolset.getTools({ apps: appsToLoad });
+        output = await generateText({
+          ...aiConfig,
+          tools,
+          maxSteps: 10,
+          prompt,
+        });
+      } else {
+        // Make the call without any tools parameter
+        output = await generateText({
+          ...aiConfig,
+          maxSteps: 10,
+          prompt,
+        });
+      }
 
       if (mode === 'ask') {
         // For ask mode, just return the response as chat output

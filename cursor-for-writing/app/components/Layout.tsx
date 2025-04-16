@@ -102,7 +102,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
   // Define available tools that can be mentioned with @ symbol
   const availableTools = [
-    { name: 'composio_search', description: 'Search across your content' },
+    { name: 'composio_search', description: 'Search the internet' },
     { name: 'googledocs', description: 'Interact with Google Docs' },
     { name: 'gmail', description: 'Access Gmail' },
     { name: 'notion', description: 'Work with Notion' },
@@ -615,7 +615,6 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     }
 
     setIsGenerating(true);
-    setAiOutput('Generating response...');
 
     // Check if Composio API key is set before proceeding
     if (!composioApiKey) {
@@ -1153,7 +1152,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Ask
+                Agent
               </button>
               <button
                 onClick={() => setMode('agent')}
@@ -1163,7 +1162,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Agent
+                Write
               </button>
             </div>
           </div>
@@ -1182,9 +1181,9 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
           <div className="text-xs text-gray-500 italic mb-4 p-3 bg-white rounded shadow-sm border border-gray-200 space-y-2">
             {/* Mode description */}
             {mode === 'ask' ? (
-              <div>Ask questions and get answers without modifying the document.</div>
+              <div>Execute agentic actions on the document.</div>
             ) : (
-              <div>Agent mode: Make changes to the document using AI assistance.</div>
+              <div>Write mode: Write/Make changes to the document using AI.</div>
             )}
 
             {/* Only show Composio section if key is NOT set */}
@@ -1223,7 +1222,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
           )}
           {isGenerating && (
             <div className="p-3 bg-white rounded shadow-sm text-sm text-gray-500">
-              Thinking...
+              <span className="thinking-animation">Thinking<span className="dot-one">.</span><span className="dot-two">.</span><span className="dot-three">.</span></span>
             </div>
           )}
         </div>
@@ -1327,6 +1326,26 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                 pointer-events: none;
                 color: #9ca3af; 
                 display: block; 
+              }
+              .thinking-animation .dot-one,
+              .thinking-animation .dot-two,
+              .thinking-animation .dot-three {
+                animation: blink 1.4s infinite;
+                animation-fill-mode: both;
+              }
+              .thinking-animation .dot-one {
+                animation-delay: 0s;
+              }
+              .thinking-animation .dot-two {
+                animation-delay: 0.2s;
+              }
+              .thinking-animation .dot-three {
+                animation-delay: 0.4s;
+              }
+              @keyframes blink {
+                0% { opacity: 0.2; }
+                20% { opacity: 1; }
+                100% { opacity: 0.2; }
               }
             `}</style>
             <button
