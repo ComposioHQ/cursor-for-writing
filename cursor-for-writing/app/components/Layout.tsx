@@ -1,4 +1,4 @@
-import { FC, ReactNode, useState, useEffect, KeyboardEvent, useRef } from 'react';
+import { FC, ReactNode, useState, useEffect, KeyboardEvent as ReactKeyboardEvent, useRef } from 'react';
 import {
   Bars3Icon,
   PlusIcon,
@@ -19,6 +19,7 @@ import {
   VariableIcon,
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
+import { ChevronDownIcon } from '@heroicons/react/20/solid';
 import { BlogPost, getAllBlogPosts, saveBlogPost, deleteBlogPost } from '../utils/fileOperations';
 import { Editor } from '@tiptap/react';
 import { openai } from '@ai-sdk/openai';
@@ -86,8 +87,28 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const [composioApiKey, setComposioApiKey] = useState<string | null>(null);
   const [showComposioInput, setShowComposioInput] = useState(false);
   const [composioApiKeyInput, setComposioApiKeyInput] = useState('');
+  const chatInputRef = useRef<HTMLDivElement>(null);
+  // Add state for tool mention dropdown
+  const [showToolDropdown, setShowToolDropdown] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
+  const [toolOptions, setToolOptions] = useState<string[]>([]);
+  // Add ref for tools dropdown
+  const toolsDropdownRef = useRef<HTMLDivElement>(null);
+  // Add state for text style dropdown
+  const [showTextStyleDropdown, setShowTextStyleDropdown] = useState(false);
+  const textStyleDropdownRef = useRef<HTMLDivElement>(null);
 
   const availableFonts = ['Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Comic Sans MS'];
+
+  // Define available tools that can be mentioned with @ symbol
+  const availableTools = [
+    { name: 'composio_search', description: 'Search across your content' },
+    { name: 'googledocs', description: 'Interact with Google Docs' },
+    { name: 'gmail', description: 'Access Gmail' },
+    { name: 'notion', description: 'Work with Notion' },
+    { name: 'linkedin', description: 'Work with Linkedin'},
+    { name: 'twitter', description: 'Work with Twitter'}
+  ];
 
   useEffect(() => {
     // Conditionally load documents only if in local env
@@ -139,11 +160,22 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      // Add handler for tools dropdown
       if (
-        selectionToolbarRef.current &&
-        !selectionToolbarRef.current.contains(event.target as Node)
+        toolsDropdownRef.current && 
+        !toolsDropdownRef.current.contains(event.target as Node) &&
+        chatInputRef.current &&
+        !chatInputRef.current.contains(event.target as Node)
       ) {
-        setShowSelectionToolbar(false);
+        setShowToolDropdown(false);
+      }
+      
+      // Add handler for text style dropdown
+      if (
+        textStyleDropdownRef.current &&
+        !textStyleDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowTextStyleDropdown(false);
       }
     };
 
@@ -209,7 +241,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     setEditingTitle(doc.title);
   };
 
-  const handleTitleKeyDown = async (event: KeyboardEvent<HTMLInputElement>, doc: BlogPost) => {
+  const handleTitleKeyDown = async (event: React.KeyboardEvent<HTMLInputElement>, doc: BlogPost) => {
     if (event.key === 'Enter') {
       await saveTitle(doc);
     } else if (event.key === 'Escape') {
@@ -347,6 +379,232 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     return 'ask';
   };
 
+  // Function to create highlighted HTML from text
+  const createHighlightedHtml = (text: string): string => {
+    const mentionRegex = /(@[a-zA-Z0-9_]+)/g;
+    // Escape HTML characters in the text first
+    const escapedText = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>"); // Preserve line breaks
+
+    return escapedText.replace(mentionRegex, '<span class="tool-mention">$1</span>');
+  };
+
+  // Function to handle input in the contentEditable div - simplified version
+  const handleChatInput = (event: React.FormEvent<HTMLDivElement>) => {
+    const target = event.currentTarget as HTMLDivElement;
+    const text = target.innerText; // Get plain text
+    setUserInput(text); // Update plain text state
+
+    // Simplified approach for @ detection
+    if (text.includes('@')) {
+      const atIndex = text.lastIndexOf('@');
+      const cursorPosition = getCursorPosition(target);
+      
+      // Only show dropdown if cursor is after the @ symbol
+      if (cursorPosition && cursorPosition > atIndex) {
+        const query = text.substring(atIndex + 1, cursorPosition).toLowerCase();
+        
+        // Filter tools based on query
+        const filtered = availableTools
+          .filter(tool => tool.name.toLowerCase().includes(query))
+          .map(tool => tool.name);
+        
+        if (filtered.length > 0) {
+          setToolOptions(filtered);
+          setShowToolDropdown(true);
+        } else {
+          setShowToolDropdown(false);
+        }
+      } else {
+        setShowToolDropdown(false);
+      }
+    } else {
+      setShowToolDropdown(false);
+    }
+  };
+
+  // Function to insert tool name when selected from dropdown
+  const insertToolMention = (toolName: string) => {
+    if (!chatInputRef.current) return;
+    
+    const text = userInput;
+    const atSymbolIndex = text.lastIndexOf('@');
+    if (atSymbolIndex === -1) return;
+    
+    const cursorPosition = getCursorPosition(chatInputRef.current);
+    if (cursorPosition === null) return;
+    
+    // This is the part before the @ symbol
+    const beforeAt = text.substring(0, atSymbolIndex);
+    
+    // Find where the partial tool text ends
+    // We need to detect word boundaries to find where our partial typed tool name ends
+    const textAfterAt = text.substring(atSymbolIndex + 1); // Get everything after @
+    
+    // Extract the partial tool name (the word starting at @ until a space or end)
+    const partialToolMatch = textAfterAt.match(/^(\w+)/);
+    const partialToolLength = partialToolMatch ? partialToolMatch[0].length : 0;
+    
+    // Get the text after the partial tool name (skip the @ and the partial tool)
+    const afterPartialTool = text.substring(atSymbolIndex + 1 + partialToolLength);
+    
+    // Create the new text with just one @ followed by the complete tool name
+    const newText = `${beforeAt}@${toolName} ${afterPartialTool}`;
+    
+    // Set the new text and close the dropdown
+    setUserInput(newText);
+    setShowToolDropdown(false);
+    
+    // Focus back on input after a short delay
+    setTimeout(() => {
+      if (chatInputRef.current) {
+        chatInputRef.current.focus();
+        
+        // Calculate position after the inserted tool name plus a space
+        const newPosition = atSymbolIndex + toolName.length + 2; // +1 for @ and +1 for space
+        
+        try {
+          const sel = window.getSelection();
+          if (!sel) return;
+          
+          // Try to set cursor position using DOM Range
+          const range = document.createRange();
+          
+          // Find the right node and position
+          let currentNode = chatInputRef.current.firstChild;
+          let currentPos = 0;
+          
+          // Simple text node search
+          if (currentNode && currentNode.nodeType === Node.TEXT_NODE) {
+            // If we have a single text node, it's simple
+            range.setStart(currentNode, Math.min(newPosition, currentNode.textContent?.length || 0));
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+          } else {
+            // If complex DOM, use our helper function
+            const textNode = findTextNodeAtPosition(chatInputRef.current, newPosition);
+            if (textNode) {
+              const offset = newPosition - getTextNodePosition(chatInputRef.current, textNode);
+              range.setStart(textNode, Math.min(offset, textNode.textContent?.length || 0));
+              range.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(range);
+            }
+          }
+        } catch (err) {
+          console.log('Error setting cursor position:', err);
+        }
+      }
+    }, 10);
+  };
+
+  // Helper function to find a text node at a given position
+  const findTextNodeAtPosition = (element: Node, position: number): Node | null => {
+    let currentPosition = 0;
+    
+    const findNode = (node: Node): Node | null => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const nodeLength = node.textContent?.length || 0;
+        if (currentPosition <= position && currentPosition + nodeLength >= position) {
+          return node;
+        }
+        currentPosition += nodeLength;
+      } else {
+        for (let i = 0; i < node.childNodes.length; i++) {
+          const foundNode = findNode(node.childNodes[i]);
+          if (foundNode) return foundNode;
+        }
+      }
+      return null;
+    };
+    
+    return findNode(element);
+  };
+
+  // Helper function to get text node position
+  const getTextNodePosition = (rootNode: Node, targetNode: Node): number => {
+    let position = 0;
+    
+    const traverse = (node: Node) => {
+      if (node === targetNode) return true;
+      
+      if (node.nodeType === Node.TEXT_NODE) {
+        position += node.textContent?.length || 0;
+      }
+      
+      for (let i = 0; i < node.childNodes.length; i++) {
+        if (traverse(node.childNodes[i])) return true;
+      }
+      
+      return false;
+    };
+    
+    traverse(rootNode);
+    return position;
+  };
+
+  // Get current cursor position (basic implementation)
+  const getCursorPosition = (element: HTMLDivElement): number | null => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+    
+    const range = selection.getRangeAt(0);
+    const preCaretRange = range.cloneRange();
+    preCaretRange.selectNodeContents(element);
+    preCaretRange.setEnd(range.startContainer, range.startOffset);
+    return preCaretRange.toString().length;
+  };
+  
+  // Use useEffect to update innerHTML and restore cursor when userInput changes
+  useEffect(() => {
+    if (chatInputRef.current) {
+      const currentPosition = getCursorPosition(chatInputRef.current);
+      const newHtml = createHighlightedHtml(userInput);
+      // Only update if HTML is different to avoid unnecessary cursor jumps
+      if (chatInputRef.current.innerHTML !== newHtml) {
+          chatInputRef.current.innerHTML = newHtml;
+          restoreCursorPosition(chatInputRef.current, currentPosition);
+      }
+    }
+  }, [userInput]);
+
+  // Add back the restoreCursorPosition function
+  const restoreCursorPosition = (element: HTMLDivElement, savedPosition: number | null) => {
+    if (savedPosition === null || !document.createRange || !window.getSelection) return;
+    const range = document.createRange();
+    const sel = window.getSelection();
+    
+    let charCount = 0;
+    let foundStart = false;
+    const traverseNodes = (node: Node) => {
+      if (foundStart) return;
+      if (node.nodeType === Node.TEXT_NODE) {
+        const nextCharCount = charCount + (node.textContent?.length || 0);
+        if (savedPosition <= nextCharCount) {
+          range.setStart(node, savedPosition - charCount);
+          range.collapse(true);
+          foundStart = true;
+        }
+        charCount = nextCharCount;
+      } else {
+        for (let i = 0; i < node.childNodes.length && !foundStart; i++) {
+          traverseNodes(node.childNodes[i]);
+        }
+      }
+    };
+
+    traverseNodes(element);
+
+    if (sel && foundStart) {
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  };
+
   const generateAIContent = async () => {
     if (!userInput.trim() || isGenerating) return;
     // Log mode and editor status at the start
@@ -453,7 +711,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     }
   };
 
-  const handleUserInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleUserInputKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       generateAIContent();
@@ -568,6 +826,40 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     setAiOutput('Composio API key removed for this session.'); // Updated feedback
   };
   // --- End Composio API Key Management ---
+
+  // Add function to get current text style label
+  const getCurrentTextStyle = (): string => {
+    if (!editor) return 'Paragraph';
+    
+    if (editor.isActive('heading', { level: 1 })) return 'Heading 1';
+    if (editor.isActive('heading', { level: 2 })) return 'Heading 2';
+    if (editor.isActive('heading', { level: 3 })) return 'Heading 3';
+    if (editor.isActive('heading', { level: 4 })) return 'Heading 4';
+    if (editor.isActive('heading', { level: 5 })) return 'Heading 5';
+    if (editor.isActive('heading', { level: 6 })) return 'Heading 6';
+    if (editor.isActive('paragraph')) return 'Paragraph';
+    if (editor.isActive('bulletList')) return 'Bullet List';
+    if (editor.isActive('orderedList')) return 'Numbered List';
+    if (editor.isActive('blockquote')) return 'Quote';
+    if (editor.isActive('codeBlock')) return 'Code Block';
+    
+    return 'Paragraph';
+  };
+
+  // Define text styles
+  const textStyles = [
+    { label: 'Heading 1', action: () => editor?.chain().focus().toggleHeading({ level: 1 }).run() },
+    { label: 'Heading 2', action: () => editor?.chain().focus().toggleHeading({ level: 2 }).run() },
+    { label: 'Heading 3', action: () => editor?.chain().focus().toggleHeading({ level: 3 }).run() },
+    { label: 'Heading 4', action: () => editor?.chain().focus().toggleHeading({ level: 4 }).run() },
+    { label: 'Heading 5', action: () => editor?.chain().focus().toggleHeading({ level: 5 }).run() },
+    { label: 'Heading 6', action: () => editor?.chain().focus().toggleHeading({ level: 6 }).run() },
+    { label: 'Paragraph', action: () => editor?.chain().focus().setParagraph().run() },
+    { label: 'Bullet List', action: () => editor?.chain().focus().toggleBulletList().run() },
+    { label: 'Numbered List', action: () => editor?.chain().focus().toggleOrderedList().run() },
+    { label: 'Quote', action: () => editor?.chain().focus().toggleBlockquote().run() },
+    { label: 'Code Block', action: () => editor?.chain().focus().toggleCodeBlock().run() },
+  ];
 
   if (isLoading) {
     return (
@@ -727,6 +1019,46 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
             {/* Right side: Toolbar / Actions - Restore original styling */} 
             <div className="flex items-center space-x-2">
+              {/* Text Style Dropdown - Only visible if editor exists */}
+              {editor && (
+                <div className="relative mr-2" ref={textStyleDropdownRef}>
+                  <button
+                    onClick={() => setShowTextStyleDropdown(!showTextStyleDropdown)}
+                    className="flex items-center space-x-1 px-2 py-1 rounded hover:bg-gray-100 border border-gray-300"
+                    title="Text Style"
+                  >
+                    <span className="text-sm font-medium">{getCurrentTextStyle()}</span>
+                    <ChevronDownIcon className="h-4 w-4" />
+                  </button>
+                  
+                  {/* Text Style Dropdown Menu */}
+                  {showTextStyleDropdown && (
+                    <div 
+                      className="absolute top-full left-0 mt-1 bg-white shadow-lg border border-gray-200 rounded-md w-48 z-50 max-h-80 overflow-y-auto"
+                    >
+                      {textStyles.map((style) => (
+                        <button
+                          key={style.label}
+                          onClick={() => {
+                            style.action();
+                            setShowTextStyleDropdown(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${
+                            editor.isActive('heading', { level: parseInt(style.label.split(' ')[1]) }) || 
+                            editor.isActive(style.label.toLowerCase().replace(' ', '')) ||
+                            (style.label === 'Paragraph' && editor.isActive('paragraph'))
+                              ? 'bg-indigo-50 text-indigo-700'
+                              : ''
+                          }`}
+                        >
+                          {style.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              
               {/* Mode Toggle - Always Visible */} 
              <div className="flex items-center space-x-2 mr-4">
                {/* ... Mode toggle JSX ... (Assuming it's always visible) */} 
@@ -865,7 +1197,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                       type="password" // Use password type for API keys
                       value={composioApiKeyInput}
                       onChange={(e) => setComposioApiKeyInput(e.target.value)}
-                      placeholder="Enter API Key"
+                      placeholder="Enter Composio API Key"
                       className="flex-grow px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
                     <button
@@ -875,7 +1207,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                       Save
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">Get your API key at <a href="https://app.composio.dev/developers" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">app.composio.dev/developers</a></p>
+                  <p className="text-xs text-gray-400 mt-1">Get your API key at <a href="https://app.composio.dev/developers" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">Composio Dashboard</a></p>
                 </div>
               </>
             )}
@@ -922,21 +1254,81 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                 ))}
               </div>
             )}
-            <textarea
-              value={userInput}
-              onChange={(e) => setUserInput(e.target.value)}
+            
+            {/* Tool Mention Dropdown - FIXED POSITIONING */}
+            {showToolDropdown && (
+              <div 
+                ref={toolsDropdownRef}
+                className="absolute z-50 bg-white shadow-xl border-2 border-indigo-300 rounded-md overflow-hidden w-72"
+                style={{ 
+                  bottom: '100%',  // Position directly above the input
+                  left: '0',
+                  marginBottom: '8px', // Add some space between dropdown and input
+                }}
+              >
+                <div className="px-3 py-2 text-sm font-semibold text-indigo-700 bg-indigo-50 border-b border-indigo-200 flex justify-between items-center">
+                  <span>Composio Integrations</span>
+                  <button 
+                    onClick={() => setShowToolDropdown(false)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="max-h-60 overflow-y-auto">
+                  {toolOptions.map((tool) => {
+                    const toolInfo = availableTools.find(t => t.name === tool);
+                    return (
+                      <div 
+                        key={tool}
+                        className="px-4 py-3 hover:bg-indigo-50 cursor-pointer flex flex-col text-sm border-b border-gray-100"
+                        onClick={() => insertToolMention(tool)}
+                      >
+                        <span className="font-semibold text-indigo-700">@{tool}</span>
+                        {toolInfo && (
+                          <span className="text-xs text-gray-600 mt-1">{toolInfo.description}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            
+            {/* Replace textarea with contentEditable div */}
+            <div
+              ref={chatInputRef}
+              contentEditable={!(isGenerating || (mode === 'agent' && !editor))}
+              onInput={handleChatInput}
               onKeyDown={handleUserInputKeyDown}
-              placeholder={
+              suppressContentEditableWarning={true}
+              data-placeholder={ 
                 mode === 'ask'
-                  ? "Ask me anything..."
+                  ? "Ask me anything... (Type @ for tools)"
                   : selectedTexts.length > 0
                   ? "What would you like to do with the selected text?"
                   : "Ask AI to edit..."
               }
-              className="w-full p-2 pr-10 border border-gray-300 rounded resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm"
-              rows={3}
-              disabled={isGenerating || (mode === 'agent' && !editor)}
+              className="w-full p-2 pr-10 border border-gray-300 rounded resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm bg-white min-h-[68px] whitespace-pre-wrap overflow-y-auto"
+              style={{ minHeight: '68px' }} 
             />
+            
+            {/* CSS for placeholder - updated selector */}
+            <style>{`
+              .tool-mention {
+                background-color: #e0e7ff; 
+                color: #4338ca; 
+                padding: 1px 2px;
+                border-radius: 3px;
+                font-weight: 500;
+              }
+              div[contentEditable=true]:empty:before {
+                content: attr(data-placeholder); /* Use data-placeholder */
+                pointer-events: none;
+                color: #9ca3af; 
+                display: block; 
+              }
+            `}</style>
             <button
               onClick={generateAIContent}
               disabled={isGenerating || !userInput.trim() || (mode === 'agent' && !editor)}

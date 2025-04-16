@@ -19,18 +19,53 @@ const aiConfig = {
 
 export async function POST(request: Request) {
   try {
-    // Extract composioApiKey from the request body
     const { message, currentContent, selections, mode = 'agent', composioApiKey } = await request.json();
 
     if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
+    // Define available tools and their mapping
+    const availableToolsMap: { [key: string]: string } = {
+      'composio_search': 'COMPOSIO_SEARCH',
+      'googledocs': 'GOOGLEDOCS',
+      'gmail':'GMAIL',
+      'notion': 'NOTION',
+      'linkedin': 'LINKEDIN',
+      'twitter': 'TWITTER'
+    };
+
+    // Helper function to extract tool mentions
+    const extractToolMentions = (text: string): string[] => {
+      const mentionRegex = /@([a-zA-Z0-9_]+)/g;
+      const mentions = text.match(mentionRegex);
+      if (!mentions) return [];
+      return mentions
+        .map(mention => mention.substring(1).toLowerCase())
+        .filter(name => availableToolsMap[name])
+        .map(name => availableToolsMap[name]);
+    };
+
+    // Determine which tools to load based on mentions
+    const mentionedToolIds = extractToolMentions(message);
+    const appsToLoad = mentionedToolIds.length > 0 ? mentionedToolIds : Object.values(availableToolsMap); // Default to all if none mentioned
+
+    // Remove mentions from the message passed to the AI if needed, or keep them for context
+    // const cleanMessage = message.replace(/@([a-zA-Z0-9_]+)/g, '').trim();
+    // Use `message` directly if you want the AI to see the mentions
+
+    // Construct prompt, potentially indicating available tools
+    let toolInfoForPrompt = "";
+    if (appsToLoad.length > 0 && appsToLoad.length < Object.keys(availableToolsMap).length) {
+        toolInfoForPrompt = `You have the following tools available for this request: ${appsToLoad.join(', ')}. Use them if appropriate.\n\n`;
+    } else if (appsToLoad.length === Object.keys(availableToolsMap).length) {
+        // toolInfoForPrompt = `All standard tools are available (${appsToLoad.join(', ')}).\n\n`; // Optional
+    }
+
     // Different prompts for different modes
-    const prompt = mode === 'agent' 
+    const prompt = mode === 'agent'
       ? selections?.length
-        ? `
-User request: "${message}"
+        ? `${toolInfoForPrompt}User request: "${message}"
 
 You are editing specific portions of a document. Below are the selected text portions to modify:
 
@@ -63,11 +98,9 @@ Format your response as a JSON array of modifications:
 }
 
 Do not include explanations or any other text outside the JSON structure.`
-        : `
-User request: "${message}"
+        : `${toolInfoForPrompt}User request: "${message}"
 
-${currentContent ? `
-Current document content:
+${currentContent ? `Current document content:
 ---
 ${currentContent}
 ---
@@ -84,23 +117,27 @@ Follow these formatting rules strictly:
 
 Output ONLY the complete, modified document content, formatted as Markdown.
 Do not include explanations or introductions.`
-      : `
-You are a helpful writing assistant. The user has provided the following context:
+      : `${toolInfoForPrompt}You are a helpful writing assistant. The user has provided the following context:
 
 ${selections?.length
   ? `Selected text:\n${selections.map(s => `\\n---\\n${s.text}\\n---`).join('\\n')}`
   : currentContent
-  ? `Selected text:\n---\n${currentContent}\n---`
+  ? `Selected text:\n---
+${currentContent}\n---`
   : `No specific text context provided.`}
 
 User's request: "${message}"
 
 Provide helpful feedback, suggestions, edits, or answers based on the user's request and the provided context. Respond directly to the user's request in a conversational but informative manner. Focus on being a helpful writing assistant.`;
 
+    // Note: The previous way of splitting basePrompt and prepending was likely causing syntax issues.
+    // This approach directly includes toolInfoForPrompt at the start of each relevant prompt branch.
+
     try {
       // Initialize toolset inside the request handler with the API key
       const toolset = new VercelAIToolSet({ apiKey: composioApiKey }); // Pass apiKey here
-      const tools = await toolset.getTools({ apps: ['COMPOSIO_SEARCH','GOOGLEDOCS'] });
+      // Dynamically load tools based on mentions or defaults
+      const tools = await toolset.getTools({ apps: appsToLoad });
 
       const output = await generateText({
         ...aiConfig,
