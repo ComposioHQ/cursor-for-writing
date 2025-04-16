@@ -858,7 +858,27 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
             {/* Only show Composio section if key is NOT set */}
             {!composioApiKey && (
               <>
-                {/* ... composio UI elements ... */}
+                <div className="mt-2 pt-2 border-t border-gray-100">
+                  <p className="mb-1">Enter your Composio API key to enable AI features:</p>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="password" // Use password type for API keys
+                      value={composioApiKeyInput}
+                      onChange={(e) => setComposioApiKeyInput(e.target.value)}
+                      placeholder="Enter API Key"
+                      className="flex-grow px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <button
+                      onClick={handleSaveComposioKey}
+                      className="px-2 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Get your API key at <a href="https://app.composio.dev" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">app.composio.dev</a>
+                  </p>
+                </div>
               </>
             )}
           </div>

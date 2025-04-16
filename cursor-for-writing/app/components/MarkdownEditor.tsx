@@ -346,12 +346,13 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   };
 
   return (
-    <div className="w-full h-full max-w-4xl mx-auto bg-white shadow-lg rounded-lg overflow-y-auto">
+    <div className="w-full h-full max-w-4xl mx-auto bg-white rounded-lg overflow-y-auto mt-8 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1),_0_8px_10px_12px_rgba(0,0,0,0.02)]">
       <style>
         {`
           /* Target the specific editor class */
           .markdown-editor-content {
             padding: 2rem !important;
+            padding-top: 2rem; /* Add top padding */
             min-height: calc(100vh - 4rem); /* Adjust based on header height */
             height: auto !important;
             outline: none !important; /* Ensure no focus outline */
