@@ -4,7 +4,8 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Cursor for Writing',
-  description: 'Cursor for Writing',
+  description: 'Cursor for Writing powered by Composio',
+  icons: '/favicon.ico'
 };
 
 interface RootLayoutProps {
