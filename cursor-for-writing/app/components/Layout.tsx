@@ -93,6 +93,18 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const [showTextStyleDropdown, setShowTextStyleDropdown] = useState(false);
   const textStyleDropdownRef = useRef<HTMLDivElement>(null);
 
+  // --- State for Connection UI --- 
+  const [connectionInfo, setConnectionInfo] = useState<{ 
+    type: 'API_KEY' | 'OAUTH2' | 'OTHER' | 'NONE';
+    message: string;
+    parameterName?: string | null;
+    initiationUrl?: string | null;
+    targetTool?: string; 
+  } | null>(null);
+  const [apiKeyInputValue, setApiKeyInputValue] = useState('');
+  const [isSubmittingKey, setIsSubmittingKey] = useState(false);
+  // ---
+
   const availableFonts = ['Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Comic Sans MS'];
 
   const availableTools = [
@@ -101,8 +113,10 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     { name: 'gmail', description: 'Access Gmail' },
     { name: 'notion', description: 'Work with Notion' },
     { name: 'linkedin', description: 'Create Posts on Linkedin'},
-    { name: 'twitter', description: 'Create Posts on Twitter'},
-    { name: 'typefully', description: 'Create Drafts on Typefully'}
+    { name: 'typefully', description: 'Create Drafts on Typefully'},
+    { name: 'youtube', description: 'Use Youtube'},
+    { name: 'discord', description: 'Use Discord'},
+
   ];
 
   useEffect(() => {
@@ -396,45 +410,68 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     setShowToolDropdown(false);
     
     setTimeout(() => {
-      if (chatInputRef.current) {
-        chatInputRef.current.focus();
+      const element = chatInputRef.current;
+      if (element) {
+        element.focus();
         
-        const newPosition = atSymbolIndex + toolName.length + 2; // +1 for @ and +1 for space
+        const targetPosition = atSymbolIndex + 1 + toolName.length + 1;
+
+        // Define helper function HERE, outside the try block
+        let cumulativeOffset = 0;
+        let targetNode: Node | null = null;
+        let nodeOffset = 0;
+        const findNodeAndOffset = (node: Node): void => {
+            if (targetNode) return;
+            if (node.nodeType === Node.TEXT_NODE) {
+                const nodeLength = node.textContent?.length || 0;
+                const nextOffset = cumulativeOffset + nodeLength;
+                if (targetPosition >= cumulativeOffset && targetPosition <= nextOffset) {
+                    targetNode = node;
+                    nodeOffset = targetPosition - cumulativeOffset;
+                }
+                cumulativeOffset = nextOffset;
+            } else {
+                node.childNodes.forEach(findNodeAndOffset);
+            }
+        };
         
         try {
-          const sel = window.getSelection();
-          if (!sel) return;
-          
-          // Try to set cursor position using DOM Range
+          const selection = window.getSelection();
           const range = document.createRange();
-          
-          // Find the right node and position
-          let currentNode = chatInputRef.current.firstChild;
-          let currentPos = 0;
-          
-          // Simple text node search
-          if (currentNode && currentNode.nodeType === Node.TEXT_NODE) {
-            // If we have a single text node, it's simple
-            range.setStart(currentNode, Math.min(newPosition, currentNode.textContent?.length || 0));
-            range.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(range);
+          if (!selection) return;
+
+          // Call the helper function
+          findNodeAndOffset(element);
+
+          if (targetNode) {
+              range.setStart(targetNode, nodeOffset);
+              range.collapse(true); 
+              selection.removeAllRanges(); 
+              selection.addRange(range); 
           } else {
-            // If complex DOM, use our helper function
-            const textNode = findTextNodeAtPosition(chatInputRef.current, newPosition);
-            if (textNode) {
-              const offset = newPosition - getTextNodePosition(chatInputRef.current, textNode);
-              range.setStart(textNode, Math.min(offset, textNode.textContent?.length || 0));
-              range.collapse(true);
-              sel.removeAllRanges();
-              sel.addRange(range);
-            }
+              range.selectNodeContents(element);
+              range.collapse(false); 
+              selection.removeAllRanges();
+              selection.addRange(range);
+              console.warn("Could not find exact cursor position, placed at end.");
           }
+
         } catch (err) {
-          console.log('Error setting cursor position:', err);
+          console.error('Error setting cursor position after tool mention:', err);
+          // Fallback logic remains the same
+          try {
+            const fallbackRange = document.createRange(); // Use different variable name
+            const fallbackSel = window.getSelection(); // Use different variable name
+            fallbackRange.selectNodeContents(element);
+            fallbackRange.collapse(false); 
+            fallbackSel?.removeAllRanges();
+            fallbackSel?.addRange(fallbackRange);
+          } catch (fallbackErr) {
+              console.error("Fallback cursor positioning failed:", fallbackErr);
+          }
         }
       }
-    }, 10);
+    }, 0);
   };
 
   // Helper function to find a text node at a given position
@@ -499,7 +536,6 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     if (chatInputRef.current) {
       const currentPosition = getCursorPosition(chatInputRef.current);
       const newHtml = createHighlightedHtml(userInput);
-      // Only update if HTML is different to avoid unnecessary cursor jumps
       if (chatInputRef.current.innerHTML !== newHtml) {
           chatInputRef.current.innerHTML = newHtml;
           restoreCursorPosition(chatInputRef.current, currentPosition);
@@ -507,7 +543,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     }
   }, [userInput]);
 
-  // Add back the restoreCursorPosition function
+  // Add back the restoreCursorPosition function (but consider removing its call in useEffect)
   const restoreCursorPosition = (element: HTMLDivElement, savedPosition: number | null) => {
     if (savedPosition === null || !document.createRange || !window.getSelection) return;
     const range = document.createRange();
@@ -541,44 +577,48 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   };
 
   const generateAIContent = async () => {
-    if (!userInput.trim() || isGenerating) return;
+    if ((!userInput.trim() && !selectedTexts.length) || isGenerating || connectionInfo) return; // Prevent sending if connection UI is active
     
     if (mode === 'agent' && !editor) {
       console.error("Agent mode selected but editor is not available.");
       return;
     }
-
-    setIsGenerating(true);
-
-    // Check if Composio API key is set before proceeding
+    
     if (!composioApiKey) {
       setAiOutput('Please set your Composio API key in the chat settings before using the AI chat feature.');
-      setIsGenerating(false);
+      // Don't clear connection info here, might be needed for Composio key input
       return;
     }
 
-    try {
-      // Get the current content from the editor for both modes
-      const currentContent = editor ? editor.getHTML() : editorContent;
-      
-      // Send selected text data if any exists, regardless of mode
-      const selectedTextsData = selectedTexts.length > 0 
-        ? selectedTexts.map(selection => ({
-            text: selection.text,
-            from: selection.from,
-            to: selection.to,
-            fileName: selection.fileName
-          }))
-        : undefined;
+    // Clear previous connection prompts IF NOT the Composio key input itself
+    if (!showComposioInput) { 
+      setConnectionInfo(null);
+      setApiKeyInputValue('');
+    }
+    setAiOutput(''); // Clear previous AI output/error
+    setIsGenerating(true);
 
+    try {
+      const currentContent = editor ? editor.getHTML() : editorContent;
+      const selectedTextsData = selectedTexts.length > 0 
+        ? selectedTexts.map(selection => ({ text: selection.text, from: selection.from, to: selection.to, fileName: selection.fileName }))
+        : undefined;
+        
+      // --- Extract tool mentions for potential connection check --- 
+      const mentionRegex = /@([a-zA-Z0-9_]+)/g;
+      const mentions = userInput.match(mentionRegex);
+      const mentionedToolNames = mentions ? mentions.map(m => m.substring(1).toLowerCase()) : [];
+      const mentionedToolIds = mentionedToolNames
+          .map(name => availableTools.find(t => t.name.toLowerCase() === name)?.name) // Use actual tool name/ID if needed
+          .filter(Boolean) as string[];
+      // ---
+      
       const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message: userInput, 
-          currentContent, // Pass the current editor content for both modes
+          currentContent, 
           selections: selectedTextsData,
           mode,
           composioApiKey
@@ -587,88 +627,149 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
-        console.error('API Error Response:', errorData);
         throw new Error(errorData.error || 'Failed to generate response');
       }
 
       const data = await response.json();
-      // console.log("API Response Data:", data); // Ensure this one is definitely showing
-
-      if (mode === 'agent') {
-        if (data.type === 'connection_required') {
-          // Handle connection initiation required
-          const message = data.message || 'Connection required for the requested tool.';
-          const url = data.initiationUrl;
-          setAiOutput(`${message}${url ? `\n\nPlease visit this URL to connect: [${url}](${url})` : ''}`);
-        } else {
-          // Handle regular chat response
-          setAiOutput(data.chatResponse || data.message || 'Agent action completed (no specific message).');
-        }
-        setUserInput('');
-        setSelectedTexts([]); // Clear selections after processing agent response
-      } else if (mode === 'write' && editor) {
-        editor.commands.clearDiffs();
-
-        // Check if it's a replacement FIRST
-        if (data.type === 'replacement' && data.modifiedContent) {
-          // Handle full replacement 
-          editor.commands.clearDiffs();
-          try {
-            const htmlContent = marked(data.modifiedContent);
-            editor.commands.clearContent(true);
-            editor.commands.setContent(htmlContent);
-            setAiOutput('Document updated successfully (full replacement).');
-          } catch (error) {
-            console.error('Error processing AI replacement content:', error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            setAiOutput(`Error rendering AI replacement: ${errorMessage}\nRaw content: ${data.modifiedContent || 'Not available'}`);
-            console.error('Markdown causing error:', data.modifiedContent);
-          }
-        } else {
-          // Not a replacement, so handle other cases (modification or fallback)
-          let chatMessage = '';
-          
-          if (data.type === 'modification' && data.modifications) {
-            // Apply diffs
-            const sortedMods = [...data.modifications].sort((a, b) => a.from - b.from); 
-            for (const mod of sortedMods) {
-              editor.commands.addDiff({ 
-                from: mod.from, 
-                to: mod.to, 
-                newText: mod.newText 
-              });
-            }
-            // Set chat message to show the modification data
-            chatMessage = `Suggested changes highlighted. Received modification data:\n\n\`\`\`json\n${JSON.stringify(data.modifications, null, 2)}\n\`\`\``;
-          } else {
-            // Not a replacement or modification, find raw text to display
-            const rawText = data.text || data.message || data.chatResponse || JSON.stringify(data);
-            if (rawText) {
-              chatMessage = `AI response received, but it wasn't a document replacement or modification. Displaying raw response:\n\n${typeof rawText === 'string' ? rawText : JSON.stringify(rawText, null, 2)}`;
-            } else {
-              chatMessage = 'AI response received, but it contained no applicable changes or text content.';
-            }
-            console.warn("Received unexpected response structure in 'write' mode (not modification or replacement):", data);
-            editor.commands.clearDiffs(); // Ensure diffs cleared if no mods applied
-          }
-          setAiOutput(chatMessage);
-        }
-        setUserInput('');
-        setSelectedTexts([]); // Clear selections after processing write response
-      } else if (mode === 'write' && !editor) {
-          console.error("Write mode selected but editor is not available.");
-          setAiOutput("Cannot perform write actions: Editor not available.");
+      
+      // --- Handle Connection Required Response --- 
+      if (data.type === 'connection_required') {
+          setConnectionInfo({
+            type: data.connectionType || 'OTHER', 
+            message: data.message || 'Connection required.',
+            parameterName: data.parameterName,
+            initiationUrl: data.initiationUrl,
+            // Try to get target tool from original mentions if possible
+            targetTool: mentionedToolIds[0] || undefined 
+          });
+          setAiOutput(''); 
           setUserInput('');
-          setSelectedTexts([]);
+      } else if (data.type === 'connection_success') { // Handle direct connection success
+          setAiOutput(data.message || 'Connection successful!');
+          setConnectionInfo(null);
+          setApiKeyInputValue('');
+          setUserInput(''); // Clear input after successful connection
+      } else if (mode === 'agent') {
+         // --- Handle normal agent/chat response --- 
+         if (data.chatResponse?.includes("Could not reliably check tool connection status")) {
+           setAiOutput(data.chatResponse); // Show the specific warning
+         } else {
+           setAiOutput(data.chatResponse || data.message || 'Agent action completed.');
+         }
+         setUserInput('');
+         setSelectedTexts([]);
+         setConnectionInfo(null); // Clear connection UI
+      } else if (mode === 'write' && editor) {
+         // --- Existing write mode handling --- 
+         editor.commands.clearDiffs();
+         if (data.type === 'replacement' && data.modifiedContent) {
+             // ... (replacement logic - ensure it's complete) ...
+              try {
+                const htmlContent = marked(data.modifiedContent);
+                editor.commands.clearContent(true);
+                editor.commands.setContent(htmlContent);
+                setAiOutput('Document updated successfully (full replacement).');
+              } catch (error) {
+                console.error('Error processing AI replacement content:', error);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                setAiOutput(`Error rendering AI replacement: ${errorMessage}\nRaw content: ${data.modifiedContent || 'Not available'}`);
+                console.error('Markdown causing error:', data.modifiedContent);
+              }
+         } else {
+             // ... (modification/fallback logic - ensure it's complete) ...
+             let chatMessage = '';
+             if (data.type === 'modification' && data.modifications) {
+                const sortedMods = [...data.modifications].sort((a, b) => a.from - b.from); 
+                for (const mod of sortedMods) {
+                  editor.commands.addDiff({ from: mod.from, to: mod.to, newText: mod.newText });
+                }
+                chatMessage = `Suggested changes highlighted. Received modification data:\n\n\`\`\`json\n${JSON.stringify(data.modifications, null, 2)}\n\`\`\``;
+              } else {
+                const rawText = data.text || data.message || data.chatResponse || JSON.stringify(data);
+                if (rawText) {
+                  chatMessage = `AI response received, but it wasn't a document replacement or modification. Displaying raw response:\n\n${typeof rawText === 'string' ? rawText : JSON.stringify(rawText, null, 2)}`;
+                } else {
+                  chatMessage = 'AI response received, but it contained no applicable changes or text content.';
+                }
+                console.warn("Received unexpected response structure in 'write' mode:", data);
+                editor.commands.clearDiffs(); 
+              }
+              setAiOutput(chatMessage);
+         }
+         setUserInput('');
+         setSelectedTexts([]);
+         setConnectionInfo(null); // Clear connection UI
       }
+      // ---
+      
     } catch (error: any) {
       console.error('Error in generateAIContent:', error);
       setAiOutput(`Error: ${error.message}`);
-      if (editor) editor.commands.clearDiffs(); // Clear diffs on error too
+      if (editor) editor.commands.clearDiffs();
+      setConnectionInfo(null); // Clear connection UI on error
     } finally {
       setIsGenerating(false);
     }
   };
+
+  // --- Handle API Key Submission --- 
+  const handleCredentialSubmit = async () => {
+    if (!apiKeyInputValue.trim() || !connectionInfo || !connectionInfo.targetTool || isSubmittingKey) {
+      return;
+    }
+  
+    setIsSubmittingKey(true);
+    setAiOutput('Connecting...'); // Provide feedback
+  
+    try {
+      const params: { [key: string]: string } = {};
+      if (connectionInfo.parameterName) {
+        params[connectionInfo.parameterName] = apiKeyInputValue;
+      } else {
+        throw new Error("Missing parameter name for API key submission.");
+      }
+  
+      const response = await fetch('/api/chat', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // No message needed here, backend checks params
+          connectionParams: params, 
+          targetTool: connectionInfo.targetTool, 
+          composioApiKey, // Pass main key
+        }),
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to connect' }));
+        throw new Error(errorData.error || 'Connection attempt failed.');
+      }
+  
+      const result = await response.json();
+      // Check for explicit success type or rely on message
+      if (result.type === 'connection_success') {
+          setAiOutput(result.message || 'Connection successful! You can now use the tool.');
+          setConnectionInfo(null); 
+          setApiKeyInputValue('');
+      } else {
+          // Handle unexpected response from connection attempt
+          setAiOutput(result.message || result.error || "Connection attempt finished, but status unclear.");
+          // Decide whether to clear connectionInfo here based on desired behavior
+          setConnectionInfo(null); 
+          setApiKeyInputValue('');
+      }
+  
+    } catch (error: any) {
+      console.error("Credential submission error:", error);
+      setAiOutput(`Connection failed: ${error.message}`);
+      // Keep connection UI open on failure to allow retry
+      // setConnectionInfo(null); 
+      // setApiKeyInputValue(''); 
+    } finally {
+      setIsSubmittingKey(false);
+    }
+  };
+  // ---
 
   const handleUserInputKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -1137,53 +1238,92 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
         {/* Chat Output Area */}
         <div className="flex-grow overflow-y-auto p-4 space-y-4">
-          {/* Mode Description & Composio Key Status (Visible in both modes) */}
-          <div className="text-xs text-gray-500 italic mb-4 p-3 bg-white rounded shadow-sm border border-gray-200 space-y-2">
-            {/* Mode description - Updated */}
-            {mode === 'agent' ? (
-              <div>Agent mode: Execute actions using tools (e.g., @composio_search).</div>
-            ) : (
-              <div>Write mode: Ask AI to write or modify the document content.</div>
-            )}
-
-            {/* Only show Composio section if key is NOT set */}
-            {!composioApiKey && (
-              <>
-                <div className="mt-2 pt-2 border-t border-gray-100">
-                  <p className="mb-1">Enter your Composio API key to enable AI features:</p>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="password" // Use password type for API keys
-                      value={composioApiKeyInput}
-                      onChange={(e) => setComposioApiKeyInput(e.target.value)}
-                      placeholder="Enter Composio API Key"
-                      className="flex-grow px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                    <button
-                      onClick={handleSaveComposioKey}
-                      className="px-2 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700"
-                    >
-                      Save
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">Please contact your administrator for the Composio API key.</p>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Display AI Output */}
-          {aiOutput && (
-            <div className="p-3 bg-white rounded shadow-sm text-sm">
-              <ReactMarkdown components={markdownComponents}>
-                {aiOutput}
-              </ReactMarkdown>
+          {/* Composio Key Input (Only show if key is NOT set AND no other connection is pending) */} 
+          {!composioApiKey && !connectionInfo && (
+            <div className="text-xs text-gray-500 italic mb-4 p-3 bg-white rounded shadow-sm border border-gray-200 space-y-2">
+                 <p className="mb-1">Enter your Composio API key to enable AI features:</p>
+                 <div className="flex items-center space-x-2">
+                   <input
+                     type="password"
+                     value={composioApiKeyInput}
+                     onChange={(e) => setComposioApiKeyInput(e.target.value)}
+                     placeholder="Enter Composio API Key"
+                     className="flex-grow px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                   />
+                   <button
+                     onClick={handleSaveComposioKey}
+                     className="px-2 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700"
+                   >
+                     Save
+                   </button>
+                 </div>
+                 <p className="text-xs text-gray-400 mt-1">Contact admin for Composio API key.</p>
             </div>
           )}
-          {isGenerating && (
-            <div className="p-3 bg-white rounded shadow-sm text-sm text-gray-500">
-              <span className="thinking-animation">Thinking<span className="dot-one">.</span><span className="dot-two">.</span><span className="dot-three">.</span></span>
+
+          {/* --- Connection UI --- */}
+          {connectionInfo && connectionInfo.type !== 'NONE' && (
+            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded shadow-sm text-sm space-y-2">
+              <p className="font-medium text-yellow-800">Connection Required ({connectionInfo.targetTool || 'Tool'})</p>
+              <p className="text-yellow-700">{connectionInfo.message}</p>
+        
+              {/* OAuth Button */} 
+              {connectionInfo.type === 'OAUTH2' && connectionInfo.initiationUrl && (
+                <a
+                  href={connectionInfo.initiationUrl}
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-3 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700"
+                  onClick={() => setConnectionInfo(null)} // Dismiss UI after clicking
+                >
+                  <LinkIcon className="h-3 w-3 mr-1.5"/>
+                  Authenticate Here
+                </a>
+              )}
+        
+              {/* API Key Input - Styled like Composio input */} 
+              {connectionInfo.type === 'API_KEY' && connectionInfo.parameterName && (
+                <div className="flex items-center space-x-2 pt-1">
+                  <input
+                    type="password"
+                    value={apiKeyInputValue}
+                    onChange={(e) => setApiKeyInputValue(e.target.value)}
+                    placeholder={`Enter ${connectionInfo.parameterName.replace(/_/g, ' ') || 'API Key'}`}
+                    className="flex-grow px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    disabled={isSubmittingKey}
+                  />
+                  <button
+                    onClick={handleCredentialSubmit}
+                    className="px-2 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700 disabled:opacity-50"
+                    disabled={!apiKeyInputValue.trim() || isSubmittingKey}
+                  >
+                    {isSubmittingKey ? 'Connecting...' : 'Submit Key'}
+                  </button>
+                </div>
+              )}
+        
+               {/* Fallback for OTHER type */} 
+               {connectionInfo.type === 'OTHER' && (
+                 <p className="text-xs text-gray-500 italic pt-1">Manual connection may be required.</p>
+               )}
             </div>
+          )}
+          {/* --- End Connection UI --- */}
+
+          {/* Display AI Output (Only if no connection UI shown) */}
+          {!connectionInfo && aiOutput && (
+             <div className="p-3 bg-white rounded shadow-sm text-sm">
+               <ReactMarkdown components={markdownComponents}>
+                 {aiOutput}
+               </ReactMarkdown>
+             </div>
+          )}
+          {/* Display Loading Indicator (Only if no connection UI shown) */}
+          {!connectionInfo && isGenerating && (
+             <div className="p-3 bg-white rounded shadow-sm text-sm text-gray-500">
+               {/* Using the previous thinking animation style */} 
+               <span className="thinking-animation">Thinking<span className="dot-one">.</span><span className="dot-two">.</span><span className="dot-three">.</span></span>
+             </div>
           )}
         </div>
 
@@ -1257,18 +1397,17 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
             {/* Replace textarea with contentEditable div */}
             <div
               ref={chatInputRef}
-              contentEditable={!(isGenerating || (mode === 'write' && !editor))}
+              contentEditable={!(isGenerating || (mode === 'write' && !editor) || connectionInfo)} // Disable if connectionInfo
               onInput={handleChatInput}
               onKeyDown={handleUserInputKeyDown}
               suppressContentEditableWarning={true}
               data-placeholder={ 
-                mode === 'agent'
-                  ? "Ask agent to perform actions... (Type @ for tools)" 
-                  : selectedTexts.length > 0
-                  ? "What would you like to do with the selected text?"
-                  : "Ask AI to write or edit..."
+                connectionInfo ? 'Complete connection step above' : // Show placeholder when disabled
+                mode === 'agent' ? "Ask agent... (Type @ for tools)" 
+                : selectedTexts.length > 0 ? "What to do with selected text?"
+                : "Ask AI to write or edit..."
               }
-              className="w-full p-2 pr-10 border border-gray-300 rounded resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm bg-white min-h-[68px] whitespace-pre-wrap overflow-y-auto"
+              className={`w-full p-2 pr-10 border border-gray-300 rounded resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm min-h-[68px] whitespace-pre-wrap overflow-y-auto ${connectionInfo ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
               style={{ minHeight: '68px' }} 
             />
             
@@ -1282,7 +1421,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                 font-weight: 500;
               }
               div[contentEditable=true]:empty:before {
-                content: attr(data-placeholder); /* Use data-placeholder */
+                content: attr(data-placeholder); 
                 pointer-events: none;
                 color: #9ca3af; 
                 display: block; 
@@ -1293,15 +1432,9 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                 animation: blink 1.4s infinite;
                 animation-fill-mode: both;
               }
-              .thinking-animation .dot-one {
-                animation-delay: 0s;
-              }
-              .thinking-animation .dot-two {
-                animation-delay: 0.2s;
-              }
-              .thinking-animation .dot-three {
-                animation-delay: 0.4s;
-              }
+              .thinking-animation .dot-one { animation-delay: 0s; }
+              .thinking-animation .dot-two { animation-delay: 0.2s; }
+              .thinking-animation .dot-three { animation-delay: 0.4s; }
               @keyframes blink {
                 0% { opacity: 0.2; }
                 20% { opacity: 1; }
@@ -1310,7 +1443,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
             `}</style>
             <button
               onClick={generateAIContent}
-              disabled={isGenerating || !userInput.trim() || (mode === 'write' && !editor)}
+              disabled={isGenerating || !userInput.trim() || (mode === 'write' && !editor) || !!connectionInfo} // Disable if connectionInfo
               className="absolute bottom-2 right-2 p-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
               title="Send Request"
             >
