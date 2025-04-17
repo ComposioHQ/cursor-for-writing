@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createOpenAI } from '@ai-sdk/openai';
+import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google'
 import { VercelAIToolSet } from 'composio-core';
 import { generateText } from 'ai';
@@ -11,14 +11,9 @@ interface Selection {
   fileName?: string;
 }
 
-// Initialize the OpenAI provider with the API key from environment variables
-const openaiProvider = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-// Initialize the AI configuration using the configured provider
+// Initialize the AI configuration
 const aiConfig = {
-  model: openaiProvider('gpt-4o'),
+  model: openai('gpt-4o'),
   temperature: 0.7,
 };
 
@@ -68,23 +63,23 @@ export async function POST(request: Request) {
     }
 
     // Different prompts for different modes
-    const prompt = mode === 'agent'
+    const prompt = mode === 'write'
       ? selections?.length
         ? `${toolInfoForPrompt}User request: "${message}"
 
 You are editing specific portions of a document. Below are the selected text portions to modify:
 
 ${selections.map((s: Selection, i: number) => `
-Selection ${i + 1} (from position ${s.from} to ${s.to}):
+Selection ${i + 1} (from position ${s.from} to ${s.to}, file: ${s.fileName || 'current'}):
 ---
 ${s.text}
 ---
 `).join('\n')}
 
-Full document context for reference:
+${currentContent ? `Full document context for reference:
 ---
 ${currentContent}
----
+---` : 'No full document context provided.'}
 
 Based on the user request, please modify ONLY the selected text portions while preserving their original positions.
 Format your response as a JSON array of modifications, using plain text for the newText field (no HTML):
@@ -120,25 +115,29 @@ Follow these formatting rules strictly:
 
 Output ONLY the complete, modified document content in standard Markdown format.
 Do not include explanations or introductions.`
-      : `${toolInfoForPrompt}You are a helpful writing assistant. The user has provided the following context:
+      : `${toolInfoForPrompt}You are a helpful assistant capable of using tools. The user has provided the following context:
 
 ${selections?.length
-  ? `Selected text:\n${selections.map(s => `\n---\n${s.text}\n---`).join('\n')}`
+  ? `Selected text:
+${selections.map(s => `\n(File: ${s.fileName || 'current'}) ---\n${s.text}\n---`).join('\n')}`
   : currentContent
-  ? `Selected text:\n---
-${currentContent}\n---`
+  ? `Current document content:
+---
+${currentContent}
+---`
   : `No specific text context provided.`}
 
 User's request: "${message}"
 
 Important instructions:
-1. Provide direct answers and solutions - do not ask questions back to the user
-2. Give clear, actionable feedback and suggestions
-3. Use plain text only - do not include any HTML formatting tags or entities
-4. Keep responses concise and to the point
-5. Focus on addressing the user's request directly
+1. Address the user's request directly.
+2. If tools (${mentionedToolIds.length > 0 ? mentionedToolIds.join(', ') : 'none specified'}) are available and relevant, use them. 
+3. If the request involves searching, summarizing, or interacting with external services mentioned in the available tools, perform the action and report the results.
+4. If the request is a general question or requires information, provide a clear and concise answer.
+5. Format your response as plain text suitable for a chat interface. Do not use HTML or Markdown extensively unless necessary for clarity (like code snippets).
+6. Do not ask follow-up questions unless absolutely necessary to clarify the request.
 
-Respond in a clear, informative manner without asking follow-up questions.`;
+Respond directly to the user's request.`
 
     // Note: The previous way of splitting basePrompt and prepending was likely causing syntax issues.
     // This approach directly includes toolInfoForPrompt at the start of each relevant prompt branch.
@@ -152,7 +151,7 @@ Respond in a clear, informative manner without asking follow-up questions.`;
       
       if (mentionedToolIds.length > 0) {
         // Load tools and include them in the API call
-        const tools = await toolset.getTools({ apps: appsToLoad });
+        const tools = await toolset.getTools({ apps: appsToLoad, actions:[] });
         output = await generateText({
           ...aiConfig,
           tools,
@@ -168,14 +167,15 @@ Respond in a clear, informative manner without asking follow-up questions.`;
         });
       }
 
-      if (mode === 'ask') {
-        // For ask mode, just return the response as chat output
+      if (mode === 'agent') {
+        // For agent mode, return the response as chat output
+        // Future: Could parse output for structured actions if needed
         return NextResponse.json({ 
-          chatResponse: output.text,
-          type: 'chat'
+          chatResponse: output.text, 
+          type: 'chat' 
         });
-      } else {
-        // For agent mode, handle document modifications
+      } else if (mode === 'write') {
+        // For write mode, handle document modifications
         if (selections?.length) {
           try {
             // More flexible regex to find JSON block within ```json ... ```

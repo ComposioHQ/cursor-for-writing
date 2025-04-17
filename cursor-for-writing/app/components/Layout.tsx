@@ -82,14 +82,11 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const [selectionPosition, setSelectionPosition] = useState({ top: 0, left: 0 });
   const selectionToolbarRef = useRef<HTMLDivElement>(null);
   const [selectedTexts, setSelectedTexts] = useState<Selection[]>([]);
-  const [mode, setMode] = useState<'ask' | 'agent'>('agent');
+  const [mode, setMode] = useState<'agent' | 'write'>('agent');
   const [currentFont, setCurrentFont] = useState<string>('Arial');
   const [composioApiKey, setComposioApiKey] = useState<string | null>(null);
   const [showComposioInput, setShowComposioInput] = useState(false);
   const [composioApiKeyInput, setComposioApiKeyInput] = useState('');
-  const [openaiApiKey, setOpenaiApiKey] = useState<string | null>(null);
-  const [showOpenaiInput, setShowOpenaiInput] = useState(false);
-  const [openaiApiKeyInput, setOpenaiApiKeyInput] = useState('');
   const chatInputRef = useRef<HTMLDivElement>(null);
   // Add state for tool mention dropdown
   const [showToolDropdown, setShowToolDropdown] = useState(false);
@@ -358,9 +355,9 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   };
 
   // Add function to detect mode from user input
-  const detectMode = (input: string): 'ask' | 'agent' => {
-    // Keywords that suggest document modification (agent mode)
-    const agentKeywords = [
+  const detectMode = (input: string): 'agent' | 'write' => {
+    // Keywords that suggest document modification (write mode)
+    const writeKeywords = [
       'edit', 'change', 'modify', 'update', 'replace', 'write',
       'add', 'delete', 'remove', 'insert', 'generate', 'create',
       'fix', 'correct', 'improve', 'rewrite', 'revise', 'format'
@@ -368,19 +365,19 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     
     const inputLower = input.toLowerCase();
     
-    // Check if input contains any agent keywords
-    const containsAgentKeyword = agentKeywords.some(keyword => 
+    // Check if input contains any write keywords
+    const containsWriteKeyword = writeKeywords.some(keyword =>
       inputLower.includes(keyword)
     );
     
-    // If there are selected texts, default to agent mode
-    if (selectedTexts.length > 0) return 'agent';
+    // If there are selected texts, default to write mode
+    if (selectedTexts.length > 0) return 'write';
     
-    // If the input suggests document modification, use agent mode
-    if (containsAgentKeyword) return 'agent';
+    // If the input suggests document modification, use write mode
+    if (containsWriteKeyword) return 'write';
     
-    // Default to ask mode for general questions
-    return 'ask';
+    // Default to agent mode for general questions/actions
+    return 'agent';
   };
 
   // Function to create highlighted HTML from text
@@ -663,59 +660,67 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
       const data = await response.json();
       // console.log("API Response Data:", data); // Ensure this one is definitely showing
 
-      if (data.type === 'chat') {
-        // console.log("Handling as chat response");
-        setAiOutput(data.chatResponse);
+      if (mode === 'agent') {
+        // console.log("Handling as agent response");
+        // Assume agent mode primarily results in chat-like output for now
+        // Backend might return specific structures for agent actions later
+        setAiOutput(data.chatResponse || data.message || 'Agent action completed (no specific message).'); // Display chat/generic message
         setUserInput('');
-      } else if (mode === 'agent' && editor) {
-        // Clear previous diffs before adding new ones
-        editor.commands.clearDiffs(); 
+        setSelectedTexts([]); // Clear selections after processing agent response
+      } else if (mode === 'write' && editor) {
+        editor.commands.clearDiffs();
 
-        // Handle document modifications by adding diffs
-        if (data.type === 'modification' && data.modifications) {
-          const sortedMods = [...data.modifications].sort((a, b) => a.from - a.from); // Sort by starting position
-          
-          for (const mod of sortedMods) {
-             // Use the addDiff command instead of direct insertion
-            editor.commands.addDiff({ 
-              from: mod.from, 
-              to: mod.to, 
-              newText: mod.newText 
-            });
-          }
-          setAiOutput('Suggested changes are highlighted. Press Tab near a change to accept it.');
-        } else if (data.type === 'replacement' && data.modifiedContent) {
-          // Handle full replacement - This might be complex with diffs. 
-          // A better approach might be to calculate a diff between old and new content.
+        // Check if it's a replacement FIRST
+        if (data.type === 'replacement' && data.modifiedContent) {
+          // Handle full replacement 
           editor.commands.clearDiffs();
           try {
-            // --- BEGIN ADDED LOGGING ---
-            console.log('AI Markdown Response:', data.modifiedContent);
             const htmlContent = marked(data.modifiedContent);
-            console.log('Converted HTML for setContent:', htmlContent);
-            // --- END ADDED LOGGING ---
-            
-            // Explicitly clear existing content before setting new content
             editor.commands.clearContent(true);
-            
             editor.commands.setContent(htmlContent);
             setAiOutput('Document updated successfully (full replacement).');
           } catch (error) {
-            // --- BEGIN IMPROVED ERROR HANDLING ---
             console.error('Error processing AI replacement content:', error);
-            // Provide more details in the chat output
             const errorMessage = error instanceof Error ? error.message : String(error);
-            setAiOutput(`Error updating document: ${errorMessage}`);
-            // Optionally log the content that caused the error
+            setAiOutput(`Error rendering AI replacement: ${errorMessage}\nRaw content: ${data.modifiedContent || 'Not available'}`);
             console.error('Markdown causing error:', data.modifiedContent);
-            // --- END IMPROVED ERROR HANDLING ---
           }
         } else {
-          editor.commands.clearDiffs(); // Ensure diffs are cleared if no changes
-          setAiOutput('No changes were suggested by the AI.');
+          // Not a replacement, so handle other cases (modification or fallback)
+          let chatMessage = '';
+          
+          if (data.type === 'modification' && data.modifications) {
+            // Apply diffs
+            const sortedMods = [...data.modifications].sort((a, b) => a.from - b.from); 
+            for (const mod of sortedMods) {
+              editor.commands.addDiff({ 
+                from: mod.from, 
+                to: mod.to, 
+                newText: mod.newText 
+              });
+            }
+            // Set chat message to show the modification data
+            chatMessage = `Suggested changes highlighted. Received modification data:\n\n\`\`\`json\n${JSON.stringify(data.modifications, null, 2)}\n\`\`\``;
+          } else {
+            // Not a replacement or modification, find raw text to display
+            const rawText = data.text || data.message || data.chatResponse || JSON.stringify(data);
+            if (rawText) {
+              chatMessage = `AI response received, but it wasn't a document replacement or modification. Displaying raw response:\n\n${typeof rawText === 'string' ? rawText : JSON.stringify(rawText, null, 2)}`;
+            } else {
+              chatMessage = 'AI response received, but it contained no applicable changes or text content.';
+            }
+            console.warn("Received unexpected response structure in 'write' mode (not modification or replacement):", data);
+            editor.commands.clearDiffs(); // Ensure diffs cleared if no mods applied
+          }
+          setAiOutput(chatMessage);
         }
         setUserInput('');
-        setSelectedTexts([]); // Clear selections after processing AI response
+        setSelectedTexts([]); // Clear selections after processing write response
+      } else if (mode === 'write' && !editor) {
+          console.error("Write mode selected but editor is not available.");
+          setAiOutput("Cannot perform write actions: Editor not available.");
+          setUserInput('');
+          setSelectedTexts([]);
       }
     } catch (error: any) {
       console.error('Error in generateAIContent:', error);
@@ -822,9 +827,12 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const handleSaveComposioKey = () => {
     if (composioApiKeyInput.trim()) {
       setComposioApiKey(composioApiKeyInput.trim());
+      // REMOVED saving to localStorage
+      // localStorage.setItem('composioApiKey', composioApiKeyInput.trim());
       setShowComposioInput(false);
       setAiOutput('Composio API key set for this session.'); // Updated feedback
     } else {
+      // Handle empty input case if needed
       setAiOutput('API key cannot be empty.');
     }
   };
@@ -832,29 +840,12 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const handleRemoveComposioKey = () => {
     setComposioApiKey(null);
     setComposioApiKeyInput('');
+    // REMOVED removing from localStorage
+    // localStorage.removeItem('composioApiKey');
     setShowComposioInput(false);
     setAiOutput('Composio API key removed for this session.'); // Updated feedback
   };
   // --- End Composio API Key Management ---
-
-  // --- OpenAI API Key Management (UI Only) ---
-  const handleSaveOpenaiKey = () => {
-    if (openaiApiKeyInput.trim()) {
-      setOpenaiApiKey(openaiApiKeyInput.trim()); // Store locally for UI feedback
-      setShowOpenaiInput(false);
-      setAiOutput('OpenAI API key status updated for this session.'); // Feedback reflects UI state change
-    } else {
-      setAiOutput('API key cannot be empty.');
-    }
-  };
-
-  const handleRemoveOpenaiKey = () => {
-    setOpenaiApiKey(null);
-    setOpenaiApiKeyInput('');
-    setShowOpenaiInput(false);
-    setAiOutput('OpenAI API key status cleared for this session.'); // Feedback reflects UI state change
-  };
-  // --- End OpenAI API Key Management ---
 
   // Add function to get current text style label
   const getCurrentTextStyle = (): string => {
@@ -1175,9 +1166,9 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
             {/* Mode Toggle Switch */}
             <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
               <button
-                onClick={() => setMode('ask')}
+                onClick={() => setMode('agent')}
                 className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  mode === 'ask'
+                  mode === 'agent'
                     ? 'bg-white text-indigo-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
@@ -1185,9 +1176,9 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                 Agent
               </button>
               <button
-                onClick={() => setMode('agent')}
+                onClick={() => setMode('write')}
                 className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  mode === 'agent'
+                  mode === 'write'
                     ? 'bg-white text-indigo-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
@@ -1207,42 +1198,23 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
         {/* Chat Output Area */}
         <div className="flex-grow overflow-y-auto p-4 space-y-4">
-          {/* API Key Management Area */}
-          <div className="text-xs text-gray-500 italic mb-4 p-3 bg-white rounded shadow-sm border border-gray-200 space-y-4">
-            {/* Mode description */}
-            {mode === 'ask' ? (
-              <div>Execute agentic actions on the document.</div>
+          {/* Mode Description & Composio Key Status (Visible in both modes) */}
+          <div className="text-xs text-gray-500 italic mb-4 p-3 bg-white rounded shadow-sm border border-gray-200 space-y-2">
+            {/* Mode description - Updated */}
+            {mode === 'agent' ? (
+              <div>Agent mode: Execute actions using tools (e.g., @composio_search).</div>
             ) : (
-              <div>Write mode: Write/Make changes to the document using AI.</div>
+              <div>Write mode: Ask AI to write or modify the document content.</div>
             )}
 
-            {/* Composio API Key Section */}
-            <div className="mt-2 pt-2 border-t border-gray-100">
-              <div className="flex justify-between items-center">
-                <p className="mb-1 font-medium text-gray-600">Composio API Key</p>
-                {composioApiKey ? (
-                  <button
-                    onClick={handleRemoveComposioKey}
-                    className="text-red-500 hover:text-red-700 text-xs"
-                  >
-                    Remove
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setShowComposioInput(!showComposioInput)}
-                    className="text-indigo-600 hover:text-indigo-800 text-xs"
-                  >
-                    {showComposioInput ? 'Cancel' : 'Set Key'}
-                  </button>
-                )}
-              </div>
-              {composioApiKey ? (
-                 <p className="text-green-600 text-xs">Key is set for this session.</p>
-              ) : showComposioInput ? (
-                <div className="mt-1">
+            {/* Only show Composio section if key is NOT set */}
+            {!composioApiKey && (
+              <>
+                <div className="mt-2 pt-2 border-t border-gray-100">
+                  <p className="mb-1">Enter your Composio API key to enable AI features:</p>
                   <div className="flex items-center space-x-2">
                     <input
-                      type="password"
+                      type="password" // Use password type for API keys
                       value={composioApiKeyInput}
                       onChange={(e) => setComposioApiKeyInput(e.target.value)}
                       placeholder="Enter Composio API Key"
@@ -1255,58 +1227,10 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                       Save
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">Ask admin for key.</p>
+                  <p className="text-xs text-gray-400 mt-1">Please contact your administrator for the Composio API key.</p>
                 </div>
-              ) : (
-                <p className="text-gray-400 text-xs">Required for Composio tools.</p>
-              )}
-            </div>
-            
-            {/* OpenAI API Key Section (Mirrors Composio) */}
-            <div className="mt-2 pt-2 border-t border-gray-100">
-              <div className="flex justify-between items-center">
-                <p className="mb-1 font-medium text-gray-600">OpenAI API Key</p>
-                {openaiApiKey ? (
-                  <button
-                    onClick={handleRemoveOpenaiKey}
-                    className="text-red-500 hover:text-red-700 text-xs"
-                  >
-                    Remove
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setShowOpenaiInput(!showOpenaiInput)}
-                    className="text-indigo-600 hover:text-indigo-800 text-xs"
-                  >
-                    {showOpenaiInput ? 'Cancel' : 'Set Key'}
-                  </button>
-                )}
-              </div>
-              {openaiApiKey ? (
-                 <p className="text-green-600 text-xs">Key status set for this session.</p>
-              ) : showOpenaiInput ? (
-                <div className="mt-1">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="password"
-                      value={openaiApiKeyInput}
-                      onChange={(e) => setOpenaiApiKeyInput(e.target.value)}
-                      placeholder="Enter OpenAI API Key"
-                      className="flex-grow px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                    <button
-                      onClick={handleSaveOpenaiKey}
-                      className="px-2 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700"
-                    >
-                      Save
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">Needed for OpenAI models.</p>
-                </div>
-              ) : (
-                 <p className="text-gray-400 text-xs">Backend uses key from environment.</p>
-              )}
-            </div>
+              </>
+            )}
           </div>
 
           {/* Display AI Output */}
@@ -1394,16 +1318,16 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
             {/* Replace textarea with contentEditable div */}
             <div
               ref={chatInputRef}
-              contentEditable={!(isGenerating || (mode === 'agent' && !editor))}
+              contentEditable={!(isGenerating || (mode === 'write' && !editor))}
               onInput={handleChatInput}
               onKeyDown={handleUserInputKeyDown}
               suppressContentEditableWarning={true}
               data-placeholder={ 
-                mode === 'ask'
-                  ? "Ask me anything... (Type @ for tools)"
+                mode === 'agent'
+                  ? "Ask agent to perform actions... (Type @ for tools)" 
                   : selectedTexts.length > 0
                   ? "What would you like to do with the selected text?"
-                  : "Ask AI to edit..."
+                  : "Ask AI to write or edit..."
               }
               className="w-full p-2 pr-10 border border-gray-300 rounded resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm bg-white min-h-[68px] whitespace-pre-wrap overflow-y-auto"
               style={{ minHeight: '68px' }} 
@@ -1447,7 +1371,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
             `}</style>
             <button
               onClick={generateAIContent}
-              disabled={isGenerating || !userInput.trim() || (mode === 'agent' && !editor)}
+              disabled={isGenerating || !userInput.trim() || (mode === 'write' && !editor)}
               className="absolute bottom-2 right-2 p-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
               title="Send Request"
             >

@@ -63,13 +63,13 @@ const debounce = (fn: Function, ms: number) => {
 const suggestionPluginKey = new PluginKey('suggestion');
 
 const Autocomplete = Extension.create<{
-  suggestionAcceptanceCount: React.MutableRefObject<number>;
+  suggestionShownCount: React.MutableRefObject<number>;
 }>({
   name: 'autocomplete',
 
   addOptions() {
     return {
-      suggestionAcceptanceCount: { current: 0 },
+      suggestionShownCount: { current: 0 },
     };
   },
 
@@ -101,13 +101,6 @@ const Autocomplete = Extension.create<{
             if (event.key === 'Tab' && currentSuggestion) {
               event.preventDefault();
               
-              if (this.options.suggestionAcceptanceCount.current >= 5) {
-                console.log('Autocomplete suggestion limit reached.');
-                currentSuggestion = null;
-                view.dispatch(view.state.tr.setMeta('suggestion', null));
-                return false;
-              }
-
               const { state } = view;
               const { selection } = state;
               
@@ -127,8 +120,6 @@ const Autocomplete = Extension.create<{
                 if (tr.docChanged) {
                   view.dispatch(tr);
                   currentSuggestion = null;
-                  this.options.suggestionAcceptanceCount.current++;
-                  console.log(`Suggestion accepted. Count: ${this.options.suggestionAcceptanceCount.current}`);
                   return true; // Indicate Tab was handled
                 }
               } catch (error) {
@@ -140,8 +131,6 @@ const Autocomplete = Extension.create<{
 
             // If a suggestion exists and any other key is pressed (that isn't Tab)
             // Clear the suggestion so the user can continue typing normally.
-            // We might want to be more specific about *which* keys clear it,
-            // e.g., ignore modifiers, arrows, etc., but this is a simple start.
             if (currentSuggestion && event.key !== 'Tab') {
               currentSuggestion = null;
               // Dispatch an empty meta update to trigger decoration removal
@@ -171,7 +160,7 @@ const Autocomplete = Extension.create<{
               return;
             }
 
-            if (this.options.suggestionAcceptanceCount.current >= 5) {
+            if (this.options.suggestionShownCount.current >= 5) {
               return;
             }
 
@@ -195,6 +184,8 @@ const Autocomplete = Extension.create<{
                   const { completion } = await response.json();
                   if (completion && view.state === state) {
                     currentSuggestion = completion;
+                    this.options.suggestionShownCount.current++;
+                    console.log(`Suggestion shown. Count: ${this.options.suggestionShownCount.current}`);
                     view.dispatch(state.tr.setMeta('suggestion', completion));
                   }
                 }
@@ -216,7 +207,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   onContentChange,
 }) => {
   const [currentDoc, setCurrentDoc] = useState<BlogPost | null>(null);
-  const suggestionAcceptanceCountRef = useRef<number>(0);
+  const suggestionShownCountRef = useRef<number>(0);
 
   const editor = useEditor({
     extensions: [
@@ -264,7 +255,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         includeChildren: false,
       }),
       Autocomplete.configure({
-        suggestionAcceptanceCount: suggestionAcceptanceCountRef,
+        suggestionShownCount: suggestionShownCountRef,
       }),
       DiffExtension,
     ],
@@ -315,7 +306,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   useEffect(() => {
     if (documentId) {
       loadDocument(documentId);
-      suggestionAcceptanceCountRef.current = 0;
+      suggestionShownCountRef.current = 0;
       console.log('Autocomplete count reset for new document.');
     } else {
       // If no documentId, reset editor to default placeholder state

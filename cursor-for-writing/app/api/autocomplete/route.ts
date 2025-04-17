@@ -1,15 +1,10 @@
 import { NextResponse } from 'next/server';
-import { createOpenAI } from '@ai-sdk/openai';
+import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google'
 import { generateText } from 'ai';
 
-// Initialize the OpenAI provider with the API key from environment variables
-const openaiProvider = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 const aiConfig = {
-  model: openaiProvider('gpt-4o-mini'),
+  model: openai('gpt-4o-mini'),
   temperature: 0.3, // Lower temperature for more focused completions
   maxTokens: 700, // Shorter responses for quick suggestions
 };
