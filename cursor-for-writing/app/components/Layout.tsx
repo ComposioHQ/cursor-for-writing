@@ -595,10 +595,15 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
       // console.log("API Response Data:", data); // Ensure this one is definitely showing
 
       if (mode === 'agent') {
-        // console.log("Handling as agent response");
-        // Assume agent mode primarily results in chat-like output for now
-        // Backend might return specific structures for agent actions later
-        setAiOutput(data.chatResponse || data.message || 'Agent action completed (no specific message).'); // Display chat/generic message
+        if (data.type === 'connection_required') {
+          // Handle connection initiation required
+          const message = data.message || 'Connection required for the requested tool.';
+          const url = data.initiationUrl;
+          setAiOutput(`${message}${url ? `\n\nPlease visit this URL to connect: [${url}](${url})` : ''}`);
+        } else {
+          // Handle regular chat response
+          setAiOutput(data.chatResponse || data.message || 'Agent action completed (no specific message).');
+        }
         setUserInput('');
         setSelectedTexts([]); // Clear selections after processing agent response
       } else if (mode === 'write' && editor) {
