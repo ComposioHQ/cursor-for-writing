@@ -19,15 +19,11 @@ import TextStyle from '@tiptap/extension-text-style';
 import FontFamily from '@tiptap/extension-font-family';
 import DiffExtension from './DiffExtension';
 
-// Create a new lowlight instance with the common language bundle
 const lowlight = createLowlight(common);
-// Add TypeScript language support to the existing common languages
 lowlight.register('typescript', typescript);
 
-// Configure marked to use highlight.js for syntax highlighting
 const renderer = new marked.Renderer();
 renderer.code = ({ text, lang }) => {
-  // Check if the language is valid and registered, default to 'plaintext' if not
   const validLanguage = hljs.getLanguage(lang || '') ? lang || 'plaintext' : 'plaintext';
   const highlighted = hljs.highlight(text, { language: validLanguage }).value;
   return `<pre><code class="hljs language-${validLanguage}">${highlighted}</code></pre>`;
@@ -97,7 +93,6 @@ const Autocomplete = Extension.create<{
           },
 
           handleKeyDown: (view, event) => {
-            // Handle Tab for accepting the suggestion
             if (event.key === 'Tab' && currentSuggestion) {
               event.preventDefault();
               
@@ -105,42 +100,33 @@ const Autocomplete = Extension.create<{
               const { selection } = state;
               
               try {
-                // Check if we're in a valid node for text insertion
                 const $pos = state.doc.resolve(selection.from);
                 const node = $pos.parent;
                 
-                // Only allow text insertion in certain node types
                 if (!['paragraph', 'heading', 'text'].includes(node.type.name)) {
                   return false;
                 }
                 
-                // Create a transaction that respects the document structure
                 const tr = state.tr.insertText(currentSuggestion, selection.from);
                 
                 if (tr.docChanged) {
                   view.dispatch(tr);
                   currentSuggestion = null;
-                  return true; // Indicate Tab was handled
+                  return true; 
                 }
               } catch (error) {
                 console.error('Error applying suggestion:', error);
                 currentSuggestion = null;
               }
-              return false; // Indicate Tab was not fully handled (error or no change)
-            }
-
-            // If a suggestion exists and any other key is pressed (that isn't Tab)
-            // Clear the suggestion so the user can continue typing normally.
-            if (currentSuggestion && event.key !== 'Tab') {
-              currentSuggestion = null;
-              // Dispatch an empty meta update to trigger decoration removal
-              view.dispatch(view.state.tr.setMeta('suggestion', null));
-              // Return false so the original key press is still processed
               return false; 
             }
 
-            // If no suggestion or Tab wasn't pressed for an existing suggestion,
-            // let other handlers process the keydown.
+            if (currentSuggestion && event.key !== 'Tab') {
+              currentSuggestion = null;
+              view.dispatch(view.state.tr.setMeta('suggestion', null));
+              return false; 
+            }
+
             return false;
           }
         }
@@ -223,7 +209,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       FontFamily,
       CodeBlockLowlight.configure({
         lowlight,
-        defaultLanguage: 'plaintext', // Default to plaintext if unspecified
+        defaultLanguage: 'plaintext', 
       }),
       Underline,
       Link.configure({
@@ -240,18 +226,17 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
           if (
             node.type.name === 'paragraph' &&
             firstNode && firstNode.type.name === 'heading' &&
-            pos === firstNode.nodeSize // Position is immediately after the first node
+            pos === firstNode.nodeSize 
           ) {
             return 'Start writing here...';
           }
-          // Placeholder for the first node if it's a paragraph (no H1)
           if (node.type.name === 'paragraph' && pos === 0) {
             return 'Start writing here...';
           }
-          return ''; // Return empty string or null for no placeholder
+          return ''; 
         },
         showOnlyWhenEditable: true,
-        showOnlyCurrent: false, // Show placeholders even when cursor isn't directly inside
+        showOnlyCurrent: false, 
         includeChildren: false,
       }),
       Autocomplete.configure({
@@ -261,40 +246,36 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     ],
     editorProps: {
       attributes: {
-        // Use a more specific class for styling to avoid conflicts
         class: 'prose prose-sm max-w-none focus:outline-none w-full px-8 py-4 text-gray-800 bg-white overflow-visible markdown-editor-content',
       },
     },
-    // Set initial content structure to allow placeholders
     content: '<h1></h1><p></p>',
     onUpdate: ({ editor }) => {
       const htmlContent = editor.getHTML();
-      const textContent = editor.getText(); // Get plain text content
-      onChange?.(htmlContent); // Keep passing HTML if needed elsewhere
-      onContentChange?.(textContent); // Pass plain text to parent for context
+      const textContent = editor.getText(); 
+      onChange?.(htmlContent); 
+      onContentChange?.(textContent); 
 
       // Debounced save logic
       if (currentDoc && documentId) {
-        debouncedSave(editor.getHTML()); // Save HTML content
+        debouncedSave(editor.getHTML()); 
       }
     },
   });
 
-  // Define the debounced save function
   const debouncedSave = useCallback(
     debounce((htmlContent: string) => {
       if (currentDoc && documentId) {
         const updatedDoc = {
           ...currentDoc,
-          // Important: Save the editor's HTML content, not markdown initially
-          // Conversion to markdown should happen on save *if* that's the storage format
+          
           content: htmlContent,
           lastModified: new Date(),
         };
         saveBlogPost(updatedDoc).then(setCurrentDoc);
       }
-    }, 1000), // Debounce time (e.g., 1 second)
-    [currentDoc, documentId] // Dependencies for useCallback
+    }, 1000), 
+    [currentDoc, documentId] 
   );
 
   useEffect(() => {
@@ -309,43 +290,35 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       suggestionShownCountRef.current = 0;
       console.log('Autocomplete count reset for new document.');
     } else {
-      // If no documentId, reset editor to default placeholder state
       if (editor && !editor.isDestroyed) {
         editor.commands.setContent('<h1></h1><p></p>');
-        setCurrentDoc(null); // Clear current document state
+        setCurrentDoc(null); 
       }
     }
-  }, [documentId, editor]); // Add editor to dependencies
+  }, [documentId, editor]); 
 
   const loadDocument = async (id: string) => {
-    if (!editor || editor.isDestroyed) return; // Ensure editor is available
+    if (!editor || editor.isDestroyed) return; 
     try {
       const doc = await loadBlogPost(id);
       if (doc) {
         setCurrentDoc(doc);
         let htmlContent = '';
-        // Check if content exists and is not just whitespace or empty structures
         if (doc.content && doc.content.trim() && doc.content.trim() !== '<p></p>' && doc.content.trim() !== '<h1></h1><p></p>') {
-          // Assume content is stored as HTML, otherwise convert from Markdown
-          // If stored as Markdown: htmlContent = marked(doc.content);
-          htmlContent = doc.content; // Assuming stored as HTML for now
+          
+          htmlContent = doc.content; 
         } else {
-          // If content is empty or just placeholder structure, set default
           htmlContent = '<h1></h1><p></p>';
         }
-        // Use 'replaceContent' to avoid merging histories if possible
-        editor.commands.setContent(htmlContent, false); // 'false' to not emit update initially
-        // Pass initial text content to parent
+        editor.commands.setContent(htmlContent, false); 
         onContentChange?.(editor.getText());
       } else {
-         // Document not found, reset to default
          editor.commands.setContent('<h1></h1><p></p>');
          setCurrentDoc(null);
-         onContentChange?.(''); // Clear content in parent
+         onContentChange?.(''); 
       }
     } catch (error) {
       console.error('Error loading document:', error);
-      // Optionally reset editor on error
       editor.commands.setContent('<h1></h1><p></p>');
       setCurrentDoc(null);
       onContentChange?.('');

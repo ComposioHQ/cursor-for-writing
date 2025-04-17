@@ -31,10 +31,8 @@ import 'highlight.js/styles/github-dark.css';
 import ReactMarkdown from 'react-markdown';
 import { Components } from 'react-markdown';
 
-// Add this line to read the environment variable
 const isLocalEnv = process.env.NEXT_PUBLIC_LOCAL_ENV === 'True';
 
-// Configure marked to use highlight.js for syntax highlighting
 const renderer = new marked.Renderer();
 renderer.code = ({ text, lang }) => {
   const language = hljs.getLanguage(lang || '') ? lang || 'plaintext' : 'plaintext';
@@ -88,19 +86,15 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const [showComposioInput, setShowComposioInput] = useState(false);
   const [composioApiKeyInput, setComposioApiKeyInput] = useState('');
   const chatInputRef = useRef<HTMLDivElement>(null);
-  // Add state for tool mention dropdown
   const [showToolDropdown, setShowToolDropdown] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const [toolOptions, setToolOptions] = useState<string[]>([]);
-  // Add ref for tools dropdown
   const toolsDropdownRef = useRef<HTMLDivElement>(null);
-  // Add state for text style dropdown
   const [showTextStyleDropdown, setShowTextStyleDropdown] = useState(false);
   const textStyleDropdownRef = useRef<HTMLDivElement>(null);
 
   const availableFonts = ['Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Comic Sans MS'];
 
-  // Define available tools that can be mentioned with @ symbol
   const availableTools = [
     { name: 'composio_search', description: 'Search the internet' },
     { name: 'googledocs', description: 'Interact with Google Docs' },
@@ -112,15 +106,13 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   ];
 
   useEffect(() => {
-    // Conditionally load documents only if in local env
     if (isLocalEnv) {
       loadDocuments();
     } else {
-      // If not local env, set loading to false and clear documents
       setIsLoading(false);
       setDocuments([]);
       setSelectedDoc(null);
-      onDocumentSelect?.(null); // Notify parent component
+      onDocumentSelect?.(null); 
     }
   }, []);
 
@@ -132,16 +124,14 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
       const hasSelection = from !== to;
 
       if (hasSelection) {
-        // Get selection coordinates
         const domSelection = window.getSelection();
         if (domSelection && domSelection.rangeCount > 0) {
           const range = domSelection.getRangeAt(0);
           const rect = range.getBoundingClientRect();
           
-          // Position toolbar above selection
           setSelectionPosition({
-            top: rect.top - 40, // 40px above selection
-            left: rect.left + (rect.width / 2), // Centered horizontally
+            top: rect.top - 40, 
+            left: rect.left + (rect.width / 2), 
           });
         }
         setShowSelectionToolbar(true);
@@ -150,10 +140,8 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
       }
     };
 
-    // Listen for selection changes in the editor
     editor.on('selectionUpdate', handleSelectionUpdate);
 
-    // Cleanup
     return () => {
       editor.off('selectionUpdate', handleSelectionUpdate);
     };
@@ -161,7 +149,6 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      // Add handler for tools dropdown
       if (
         toolsDropdownRef.current && 
         !toolsDropdownRef.current.contains(event.target as Node) &&
@@ -171,7 +158,6 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
         setShowToolDropdown(false);
       }
       
-      // Add handler for text style dropdown
       if (
         textStyleDropdownRef.current &&
         !textStyleDropdownRef.current.contains(event.target as Node)
@@ -186,9 +172,6 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     };
   }, []);
 
-  const handleContentChange = (content: string) => {
-    // This function is now unused as editorContent is received as a prop
-  };
 
   const loadDocuments = async () => {
     try {
@@ -214,7 +197,6 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   };
 
   const createNewDocument = async () => {
-    // This function should only be callable if isLocalEnv is true, ensured by conditional button rendering
     try {
       setError(null);
       const newDoc: BlogPost = {
@@ -236,7 +218,6 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   };
 
   const startEditingTitle = (doc: BlogPost, event: React.MouseEvent) => {
-    // This function should only be callable if isLocalEnv is true, ensured by conditional button rendering
     event.stopPropagation();
     setEditingTitleId(doc.id);
     setEditingTitle(doc.title);
@@ -251,7 +232,6 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   };
 
   const saveTitle = async (doc: BlogPost) => {
-    // This function relies on editingTitleId being set, which happens via startEditingTitle
     if (editingTitle.trim() === '') return;
     
     try {
@@ -269,7 +249,6 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   };
 
   const deleteDocument = async (event: React.MouseEvent) => {
-    // This function should only be callable if isLocalEnv is true, ensured by conditional button rendering
     event.preventDefault();
     if (!selectedDoc) return;
 
@@ -280,11 +259,9 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     if (!confirmDelete) return;
 
     try {
-      // Remove from documents array
       const updatedDocs = documents.filter(d => d.id !== selectedDoc);
       setDocuments(updatedDocs);
       
-      // Select the next available document
       if (updatedDocs.length > 0) {
         handleDocumentSelect(updatedDocs[0].id);
       } else {
@@ -292,12 +269,10 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
         onDocumentSelect?.(null);
       }
 
-      // Call the actual deletion function from fileOperations
       await deleteBlogPost(selectedDoc);
     } catch (error) {
       console.error('Failed to delete document:', error);
-      // Reload documents to ensure consistency if deletion fails
-      await loadDocuments(); // Ensure reload happens even on error
+      await loadDocuments(); 
     }
   };
 
@@ -347,64 +322,33 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const toggleHistory = (event: React.MouseEvent) => {
     event.preventDefault();
     setShowHistory(!showHistory);
-    // TODO: Implement history view
   };
 
   const toggleChat = () => {
     setIsChatOpen(!isChatOpen);
   };
 
-  // Add function to detect mode from user input
-  const detectMode = (input: string): 'agent' | 'write' => {
-    // Keywords that suggest document modification (write mode)
-    const writeKeywords = [
-      'edit', 'change', 'modify', 'update', 'replace', 'write',
-      'add', 'delete', 'remove', 'insert', 'generate', 'create',
-      'fix', 'correct', 'improve', 'rewrite', 'revise', 'format'
-    ];
-    
-    const inputLower = input.toLowerCase();
-    
-    // Check if input contains any write keywords
-    const containsWriteKeyword = writeKeywords.some(keyword =>
-      inputLower.includes(keyword)
-    );
-    
-    // If there are selected texts, default to write mode
-    if (selectedTexts.length > 0) return 'write';
-    
-    // If the input suggests document modification, use write mode
-    if (containsWriteKeyword) return 'write';
-    
-    // Default to agent mode for general questions/actions
-    return 'agent';
-  };
 
-  // Function to create highlighted HTML from text
   const createHighlightedHtml = (text: string): string => {
     const mentionRegex = /(@[a-zA-Z0-9_]+)/g;
-    // Escape HTML characters in the text first
     const escapedText = text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
-        .replace(/\n/g, "<br>"); // Preserve line breaks
+        .replace(/\n/g, "<br>"); 
 
     return escapedText.replace(mentionRegex, '<span class="tool-mention">$1</span>');
   };
 
-  // Function to handle input in the contentEditable div - simplified version
   const handleChatInput = (event: React.FormEvent<HTMLDivElement>) => {
     const target = event.currentTarget as HTMLDivElement;
-    const text = target.innerText; // Get plain text
-    setUserInput(text); // Update plain text state
+    const text = target.innerText;
+    setUserInput(text); 
 
-    // Simplified approach for @ detection
     if (text.includes('@')) {
       const atSymbolIndex = text.lastIndexOf('@');
       const cursorPosition = getCursorPosition(target);
       
-      // Only show dropdown if cursor is after the @ symbol
       if (cursorPosition && cursorPosition > atSymbolIndex) {
         const query = text.substring(atSymbolIndex + 1, cursorPosition).toLowerCase();
         
@@ -427,7 +371,6 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     }
   };
 
-  // Function to insert tool name when selected from dropdown
   const insertToolMention = (toolName: string) => {
     if (!chatInputRef.current) return;
     
@@ -438,33 +381,24 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     const cursorPosition = getCursorPosition(chatInputRef.current);
     if (cursorPosition === null) return;
     
-    // This is the part before the @ symbol
     const beforeAt = text.substring(0, atSymbolIndex);
+
+    const textAfterAt = text.substring(atSymbolIndex + 1); 
     
-    // Find where the partial tool text ends
-    // We need to detect word boundaries to find where our partial typed tool name ends
-    const textAfterAt = text.substring(atSymbolIndex + 1); // Get everything after @
-    
-    // Extract the partial tool name (the word starting at @ until a space or end)
     const partialToolMatch = textAfterAt.match(/^(\w+)/);
     const partialToolLength = partialToolMatch ? partialToolMatch[0].length : 0;
     
-    // Get the text after the partial tool name (skip the @ and the partial tool)
     const afterPartialTool = text.substring(atSymbolIndex + 1 + partialToolLength);
     
-    // Create the new text with just one @ followed by the complete tool name
     const newText = `${beforeAt}@${toolName} ${afterPartialTool}`;
     
-    // Set the new text and close the dropdown
     setUserInput(newText);
     setShowToolDropdown(false);
     
-    // Focus back on input after a short delay
     setTimeout(() => {
       if (chatInputRef.current) {
         chatInputRef.current.focus();
         
-        // Calculate position after the inserted tool name plus a space
         const newPosition = atSymbolIndex + toolName.length + 2; // +1 for @ and +1 for space
         
         try {
