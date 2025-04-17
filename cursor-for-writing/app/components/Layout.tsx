@@ -87,6 +87,9 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const [composioApiKey, setComposioApiKey] = useState<string | null>(null);
   const [showComposioInput, setShowComposioInput] = useState(false);
   const [composioApiKeyInput, setComposioApiKeyInput] = useState('');
+  const [openaiApiKey, setOpenaiApiKey] = useState<string | null>(null);
+  const [showOpenaiInput, setShowOpenaiInput] = useState(false);
+  const [openaiApiKeyInput, setOpenaiApiKeyInput] = useState('');
   const chatInputRef = useRef<HTMLDivElement>(null);
   // Add state for tool mention dropdown
   const [showToolDropdown, setShowToolDropdown] = useState(false);
@@ -106,8 +109,9 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     { name: 'googledocs', description: 'Interact with Google Docs' },
     { name: 'gmail', description: 'Access Gmail' },
     { name: 'notion', description: 'Work with Notion' },
-    { name: 'linkedin', description: 'Work with Linkedin'},
-    { name: 'twitter', description: 'Work with Twitter'}
+    { name: 'linkedin', description: 'Create Posts on Linkedin'},
+    { name: 'twitter', description: 'Create Posts on Twitter'},
+    { name: 'typefully', description: 'Create Drafts on Typefully'}
   ];
 
   useEffect(() => {
@@ -400,12 +404,12 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
     // Simplified approach for @ detection
     if (text.includes('@')) {
-      const atIndex = text.lastIndexOf('@');
+      const atSymbolIndex = text.lastIndexOf('@');
       const cursorPosition = getCursorPosition(target);
       
       // Only show dropdown if cursor is after the @ symbol
-      if (cursorPosition && cursorPosition > atIndex) {
-        const query = text.substring(atIndex + 1, cursorPosition).toLowerCase();
+      if (cursorPosition && cursorPosition > atSymbolIndex) {
+        const query = text.substring(atSymbolIndex + 1, cursorPosition).toLowerCase();
         
         // Filter tools based on query
         const filtered = availableTools
@@ -607,8 +611,7 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
   const generateAIContent = async () => {
     if (!userInput.trim() || isGenerating) return;
-    // Log mode and editor status at the start
-    // console.log(`generateAIContent called. Mode: ${mode}, Editor exists: ${!!editor}`);
+    
     if (mode === 'agent' && !editor) {
       console.error("Agent mode selected but editor is not available.");
       return;
@@ -620,12 +623,12 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
     if (!composioApiKey) {
       setAiOutput('Please set your Composio API key in the chat settings before using the AI chat feature.');
       setIsGenerating(false);
-      return; // Stop execution if key is missing
+      return;
     }
 
     try {
-      // Use editorContent prop
-      const currentContent = editorContent; 
+      // Get the current content from the editor for both modes
+      const currentContent = editor ? editor.getHTML() : editorContent;
       
       // Send selected text data if any exists, regardless of mode
       const selectedTextsData = selectedTexts.length > 0 
@@ -644,10 +647,10 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
         },
         body: JSON.stringify({ 
           message: userInput, 
-          currentContent, // Pass editor content
+          currentContent, // Pass the current editor content for both modes
           selections: selectedTextsData,
           mode,
-          composioApiKey: composioApiKey // Pass the stored API key
+          composioApiKey
         }),
       });
 
@@ -683,16 +686,29 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
           setAiOutput('Suggested changes are highlighted. Press Tab near a change to accept it.');
         } else if (data.type === 'replacement' && data.modifiedContent) {
           // Handle full replacement - This might be complex with diffs. 
-          // For now, let's clear diffs and just set content. 
           // A better approach might be to calculate a diff between old and new content.
-          editor.commands.clearDiffs(); 
+          editor.commands.clearDiffs();
           try {
+            // --- BEGIN ADDED LOGGING ---
+            console.log('AI Markdown Response:', data.modifiedContent);
             const htmlContent = marked(data.modifiedContent);
+            console.log('Converted HTML for setContent:', htmlContent);
+            // --- END ADDED LOGGING ---
+            
+            // Explicitly clear existing content before setting new content
+            editor.commands.clearContent(true);
+            
             editor.commands.setContent(htmlContent);
             setAiOutput('Document updated successfully (full replacement).');
           } catch (error) {
-            console.error('Error updating document content:', error);
-            setAiOutput('Error updating document content');
+            // --- BEGIN IMPROVED ERROR HANDLING ---
+            console.error('Error processing AI replacement content:', error);
+            // Provide more details in the chat output
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            setAiOutput(`Error updating document: ${errorMessage}`);
+            // Optionally log the content that caused the error
+            console.error('Markdown causing error:', data.modifiedContent);
+            // --- END IMPROVED ERROR HANDLING ---
           }
         } else {
           editor.commands.clearDiffs(); // Ensure diffs are cleared if no changes
@@ -806,12 +822,9 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const handleSaveComposioKey = () => {
     if (composioApiKeyInput.trim()) {
       setComposioApiKey(composioApiKeyInput.trim());
-      // REMOVED saving to localStorage
-      // localStorage.setItem('composioApiKey', composioApiKeyInput.trim());
       setShowComposioInput(false);
       setAiOutput('Composio API key set for this session.'); // Updated feedback
     } else {
-      // Handle empty input case if needed
       setAiOutput('API key cannot be empty.');
     }
   };
@@ -819,12 +832,29 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
   const handleRemoveComposioKey = () => {
     setComposioApiKey(null);
     setComposioApiKeyInput('');
-    // REMOVED removing from localStorage
-    // localStorage.removeItem('composioApiKey');
     setShowComposioInput(false);
     setAiOutput('Composio API key removed for this session.'); // Updated feedback
   };
   // --- End Composio API Key Management ---
+
+  // --- OpenAI API Key Management (UI Only) ---
+  const handleSaveOpenaiKey = () => {
+    if (openaiApiKeyInput.trim()) {
+      setOpenaiApiKey(openaiApiKeyInput.trim()); // Store locally for UI feedback
+      setShowOpenaiInput(false);
+      setAiOutput('OpenAI API key status updated for this session.'); // Feedback reflects UI state change
+    } else {
+      setAiOutput('API key cannot be empty.');
+    }
+  };
+
+  const handleRemoveOpenaiKey = () => {
+    setOpenaiApiKey(null);
+    setOpenaiApiKeyInput('');
+    setShowOpenaiInput(false);
+    setAiOutput('OpenAI API key status cleared for this session.'); // Feedback reflects UI state change
+  };
+  // --- End OpenAI API Key Management ---
 
   // Add function to get current text style label
   const getCurrentTextStyle = (): string => {
@@ -1177,8 +1207,8 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
 
         {/* Chat Output Area */}
         <div className="flex-grow overflow-y-auto p-4 space-y-4">
-          {/* Mode Description & Composio Key Status (Visible in both modes) */}
-          <div className="text-xs text-gray-500 italic mb-4 p-3 bg-white rounded shadow-sm border border-gray-200 space-y-2">
+          {/* API Key Management Area */}
+          <div className="text-xs text-gray-500 italic mb-4 p-3 bg-white rounded shadow-sm border border-gray-200 space-y-4">
             {/* Mode description */}
             {mode === 'ask' ? (
               <div>Execute agentic actions on the document.</div>
@@ -1186,14 +1216,33 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
               <div>Write mode: Write/Make changes to the document using AI.</div>
             )}
 
-            {/* Only show Composio section if key is NOT set */}
-            {!composioApiKey && (
-              <>
-                <div className="mt-2 pt-2 border-t border-gray-100">
-                  <p className="mb-1">Enter your Composio API key to enable AI features:</p>
+            {/* Composio API Key Section */}
+            <div className="mt-2 pt-2 border-t border-gray-100">
+              <div className="flex justify-between items-center">
+                <p className="mb-1 font-medium text-gray-600">Composio API Key</p>
+                {composioApiKey ? (
+                  <button
+                    onClick={handleRemoveComposioKey}
+                    className="text-red-500 hover:text-red-700 text-xs"
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowComposioInput(!showComposioInput)}
+                    className="text-indigo-600 hover:text-indigo-800 text-xs"
+                  >
+                    {showComposioInput ? 'Cancel' : 'Set Key'}
+                  </button>
+                )}
+              </div>
+              {composioApiKey ? (
+                 <p className="text-green-600 text-xs">Key is set for this session.</p>
+              ) : showComposioInput ? (
+                <div className="mt-1">
                   <div className="flex items-center space-x-2">
                     <input
-                      type="password" // Use password type for API keys
+                      type="password"
                       value={composioApiKeyInput}
                       onChange={(e) => setComposioApiKeyInput(e.target.value)}
                       placeholder="Enter Composio API Key"
@@ -1206,10 +1255,58 @@ const Layout: FC<LayoutProps> = ({ children, onDocumentSelect, editor, onContent
                       Save
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">Get your API key at <a href="https://app.composio.dev/developers" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">Composio Dashboard</a></p>
+                  <p className="text-xs text-gray-400 mt-1">Ask admin for key.</p>
                 </div>
-              </>
-            )}
+              ) : (
+                <p className="text-gray-400 text-xs">Required for Composio tools.</p>
+              )}
+            </div>
+            
+            {/* OpenAI API Key Section (Mirrors Composio) */}
+            <div className="mt-2 pt-2 border-t border-gray-100">
+              <div className="flex justify-between items-center">
+                <p className="mb-1 font-medium text-gray-600">OpenAI API Key</p>
+                {openaiApiKey ? (
+                  <button
+                    onClick={handleRemoveOpenaiKey}
+                    className="text-red-500 hover:text-red-700 text-xs"
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowOpenaiInput(!showOpenaiInput)}
+                    className="text-indigo-600 hover:text-indigo-800 text-xs"
+                  >
+                    {showOpenaiInput ? 'Cancel' : 'Set Key'}
+                  </button>
+                )}
+              </div>
+              {openaiApiKey ? (
+                 <p className="text-green-600 text-xs">Key status set for this session.</p>
+              ) : showOpenaiInput ? (
+                <div className="mt-1">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="password"
+                      value={openaiApiKeyInput}
+                      onChange={(e) => setOpenaiApiKeyInput(e.target.value)}
+                      placeholder="Enter OpenAI API Key"
+                      className="flex-grow px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <button
+                      onClick={handleSaveOpenaiKey}
+                      className="px-2 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Needed for OpenAI models.</p>
+                </div>
+              ) : (
+                 <p className="text-gray-400 text-xs">Backend uses key from environment.</p>
+              )}
+            </div>
           </div>
 
           {/* Display AI Output */}

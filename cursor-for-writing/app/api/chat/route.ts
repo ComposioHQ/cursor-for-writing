@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { openai } from '@ai-sdk/openai';
+import { createOpenAI } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google'
 import { VercelAIToolSet } from 'composio-core';
 import { generateText } from 'ai';
@@ -11,9 +11,14 @@ interface Selection {
   fileName?: string;
 }
 
-// Initialize the AI configuration
+// Initialize the OpenAI provider with the API key from environment variables
+const openaiProvider = createOpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Initialize the AI configuration using the configured provider
 const aiConfig = {
-  model: openai('gpt-4o'),
+  model: openaiProvider('gpt-4o'),
   temperature: 0.7,
 };
 
@@ -32,7 +37,8 @@ export async function POST(request: Request) {
       'gmail':'GMAIL',
       'notion': 'NOTION',
       'linkedin': 'LINKEDIN',
-      'twitter': 'TWITTER'
+      'twitter': 'TWITTER',
+      'typefully': 'TYPEFULLY'
     };
 
     // Helper function to extract tool mentions
@@ -81,21 +87,21 @@ ${currentContent}
 ---
 
 Based on the user request, please modify ONLY the selected text portions while preserving their original positions.
-For each selection, provide the modified text that should replace it and an explanation of the changes.
-Format your response as a JSON array of modifications:
+Format your response as a JSON array of modifications, using plain text for the newText field (no HTML):
 
 {
   "modifications": [
     {
       "from": <start_position>,
       "to": <end_position>,
-      "newText": "modified text content",
+      "newText": "modified text content in plain text format",
       "explanation": "Brief explanation of what was changed and why"
     },
     ...
   ]
 }
 
+Important: Do not use HTML tags in the newText field. Provide all content in plain text format only.
 Do not include explanations or any other text outside the JSON structure.`
         : `${toolInfoForPrompt}User request: "${message}"
 
@@ -107,19 +113,17 @@ ${currentContent}
 Based on the user request, please modify or generate document content.
 ` : 'Please generate new content based on the user request.'}
 Follow these formatting rules strictly:
-1. Use proper markdown formatting
-2. Start with a single # for the main title
-3. Use double line breaks (\\n\\n) between paragraphs
-4. Properly format quotes with "quotation marks"
-5. Use proper punctuation and spacing
-6. Do not use horizontal rules (---)
+1. Use standard Markdown syntax (e.g., # for headings, * or - for lists, **bold**, _italic_, etc.).
+2. Use double line breaks between paragraphs.
+3. Ensure proper Markdown formatting for quotes, code blocks, etc.
+4. Do NOT include any HTML tags.
 
-Output ONLY the complete, modified document content, formatted as Markdown.
+Output ONLY the complete, modified document content in standard Markdown format.
 Do not include explanations or introductions.`
       : `${toolInfoForPrompt}You are a helpful writing assistant. The user has provided the following context:
 
 ${selections?.length
-  ? `Selected text:\n${selections.map(s => `\\n---\\n${s.text}\\n---`).join('\\n')}`
+  ? `Selected text:\n${selections.map(s => `\n---\n${s.text}\n---`).join('\n')}`
   : currentContent
   ? `Selected text:\n---
 ${currentContent}\n---`
@@ -127,14 +131,21 @@ ${currentContent}\n---`
 
 User's request: "${message}"
 
-Provide helpful feedback, suggestions, edits, or answers based on the user's request and the provided context. Respond directly to the user's request in a conversational but informative manner. Focus on being a helpful writing assistant.`;
+Important instructions:
+1. Provide direct answers and solutions - do not ask questions back to the user
+2. Give clear, actionable feedback and suggestions
+3. Use plain text only - do not include any HTML formatting tags or entities
+4. Keep responses concise and to the point
+5. Focus on addressing the user's request directly
+
+Respond in a clear, informative manner without asking follow-up questions.`;
 
     // Note: The previous way of splitting basePrompt and prepending was likely causing syntax issues.
     // This approach directly includes toolInfoForPrompt at the start of each relevant prompt branch.
 
     try {
       // Initialize toolset inside the request handler with the API key
-      const toolset = new VercelAIToolSet({ apiKey: composioApiKey }); // Pass apiKey here
+      const toolset = new VercelAIToolSet({ apiKey: composioApiKey}); // Pass apiKey here
       
       // Only load tools if any were mentioned
       let output;

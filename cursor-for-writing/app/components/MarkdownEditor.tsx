@@ -97,6 +97,7 @@ const Autocomplete = Extension.create<{
           },
 
           handleKeyDown: (view, event) => {
+            // Handle Tab for accepting the suggestion
             if (event.key === 'Tab' && currentSuggestion) {
               event.preventDefault();
               
@@ -128,14 +129,29 @@ const Autocomplete = Extension.create<{
                   currentSuggestion = null;
                   this.options.suggestionAcceptanceCount.current++;
                   console.log(`Suggestion accepted. Count: ${this.options.suggestionAcceptanceCount.current}`);
-                  return true;
+                  return true; // Indicate Tab was handled
                 }
               } catch (error) {
                 console.error('Error applying suggestion:', error);
                 currentSuggestion = null;
               }
-              return false;
+              return false; // Indicate Tab was not fully handled (error or no change)
             }
+
+            // If a suggestion exists and any other key is pressed (that isn't Tab)
+            // Clear the suggestion so the user can continue typing normally.
+            // We might want to be more specific about *which* keys clear it,
+            // e.g., ignore modifiers, arrows, etc., but this is a simple start.
+            if (currentSuggestion && event.key !== 'Tab') {
+              currentSuggestion = null;
+              // Dispatch an empty meta update to trigger decoration removal
+              view.dispatch(view.state.tr.setMeta('suggestion', null));
+              // Return false so the original key press is still processed
+              return false; 
+            }
+
+            // If no suggestion or Tab wasn't pressed for an existing suggestion,
+            // let other handlers process the keydown.
             return false;
           }
         }
